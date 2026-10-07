@@ -16,7 +16,7 @@
 	roda no ar e estica quando prende, e os sons.
 	ZONAS SEM GANCHO: qualquer Part (ou Model) com a tag "ZonaSemGancho" é uma área onde
 	o gancho não funciona (veja "ZONAS SEM GANCHO", mais abaixo).
-	Quem confere tudo e prende de verdade é o Servidor de cada quadriciclo.
+	Quem confere tudo e prende de verdade é o QuadricicloServidor (módulo Gancho de lá).
 ]]
 
 local Players = game:GetService("Players")
@@ -201,8 +201,8 @@ end
 --   - não sai de dentro dela (o ícone dele fica vermelho, com um risco);
 --   - se o quadriciclo ou a corda entrar na zona com ele no ar ou preso, ele solta (sem estilingue).
 -- O tamanho, o giro e o lugar da zona são os da Part. Atributo "Ativa" = false desliga a zona sem
--- apagar. (Os scripts ZonasSemGancho e ZonasSemImpulso, no ServerScriptService, deixam as zonas
--- invisíveis e sem colisão quando o jogo começa.)
+-- apagar. (O script Zonas, no ServerScriptService, deixa as zonas invisíveis e sem colisão quando o
+-- jogo começa.)
 
 -- A linha de A até B passa por dentro da caixa desta peça? (Vale também se A ou B estiverem dentro.)
 local function linhaCruzaPeca(peca: BasePart, a: Vector3, b: Vector3): boolean
@@ -228,17 +228,54 @@ local function linhaCruzaPeca(peca: BasePart, a: Vector3, b: Vector3): boolean
 	return true
 end
 
+-- (OTIMIZADO) A LISTA DAS ZONAS fica guardada: antes, a cada frame, o script procurava todas as zonas
+-- do mapa e todas as peças de dentro delas de novo (várias vezes por frame). Agora a lista é refeita
+-- só quando uma zona aparece ou some, e a cada 2 segundos (para pegar peças que chegaram depois,
+-- como acontece com o StreamingEnabled).
+type ListaDeZonas = { zonas: { { raiz: Instance, pecas: { BasePart } } }, feitaEm: number }
+local listasDeZonas: { [string]: ListaDeZonas } = {}
+local REFAZER_ZONAS_A_CADA = 2 -- (s)
+
+local function zonasDaTag(tag: string): ListaDeZonas
+	local lista = listasDeZonas[tag]
+	if lista and os.clock() - lista.feitaEm < REFAZER_ZONAS_A_CADA then
+		return lista
+	end
+	local nova: ListaDeZonas = { zonas = {}, feitaEm = os.clock() }
+	for _, raiz in CollectionService:GetTagged(tag) do
+		local pecas: { BasePart } = {}
+		if raiz:IsA("BasePart") then
+			table.insert(pecas, raiz)
+		end
+		for _, peca in raiz:GetDescendants() do
+			if peca:IsA("BasePart") then
+				table.insert(pecas, peca)
+			end
+		end
+		table.insert(nova.zonas, { raiz = raiz, pecas = pecas })
+	end
+	listasDeZonas[tag] = nova
+	return nova
+end
+
+-- Uma zona apareceu ou sumiu: a lista daquela tag é refeita na próxima vez que alguém precisar.
+for _, tag in { TAG_ZONA_SEM_GANCHO, TAG_ZONA_SEM_IMPULSO } do
+	local function esquecerLista()
+		listasDeZonas[tag] = nil
+	end
+	CollectionService:GetInstanceAddedSignal(tag):Connect(esquecerLista)
+	CollectionService:GetInstanceRemovedSignal(tag):Connect(esquecerLista)
+end
+
 -- A linha de A até B encosta em alguma zona ligada COM ESTA TAG? (Com A = B: o ponto está dentro de uma?)
 local function linhaEmZona(tag: string, a: Vector3, b: Vector3): boolean
-	for _, zona in CollectionService:GetTagged(tag) do
-		if zona:GetAttribute("Ativa") == false or not zona:IsDescendantOf(workspace) then
+	for _, zona in zonasDaTag(tag).zonas do
+		local raiz = zona.raiz
+		if raiz:GetAttribute("Ativa") == false or not raiz:IsDescendantOf(workspace) then
 			continue
 		end
-		if zona:IsA("BasePart") and linhaCruzaPeca(zona, a, b) then
-			return true
-		end
-		for _, peca in zona:GetDescendants() do
-			if peca:IsA("BasePart") and linhaCruzaPeca(peca, a, b) then
+		for _, peca in zona.pecas do
+			if peca.Parent ~= nil and linhaCruzaPeca(peca, a, b) then
 				return true
 			end
 		end
@@ -261,6 +298,24 @@ local function dentroDeZona(quad: Quadriciclo, tipo: string): boolean
 	return zonaNoCaminho(posicao, posicao, tipo)
 end
 
+-- (OTIMIZADO) Os FILTROS dos raios (o que eles ignoram: o seu veículo e você) são criados uma vez,
+-- quando você senta, e não a cada frame. (Gancho.ligar cria; Gancho.desligar apaga.)
+local filtroSemAgua: RaycastParams? = nil -- mira e "roda no chão" (atravessam a água)
+local filtroEscalada: RaycastParams? = nil -- escalada (como antes: a água conta)
+
+local function criarFiltro(quad: Quadriciclo, ignorarAgua: boolean): RaycastParams
+	local filtro = RaycastParams.new()
+	filtro.FilterType = Enum.RaycastFilterType.Exclude
+	local ignorar: { Instance } = { quad.modelo } -- nunca acerta o próprio veículo...
+	local personagem = jogadorLocal.Character
+	if personagem then
+		table.insert(ignorar, personagem) -- ...nem você
+	end
+	filtro.FilterDescendantsInstances = ignorar
+	filtro.IgnoreWater = ignorarAgua
+	return filtro
+end
+
 -- Cor de "proibido" (ícone e mira). Opcional na Configuracao: GanchoCorProibido.
 local function corProibida(quad: Quadriciclo): Color3
 	return quad.Config.GanchoCorProibido or COR_PROIBIDO_PADRAO
@@ -271,15 +326,7 @@ end
 local function mirarGancho(quad: Quadriciclo): RaycastResult?
 	local alcance = alcanceDoTipo(quad, tipoSelecionado) -- (NOVO) cada tipo tem o seu alcance (o SEGURAR é mais curto)
 	local camera = Veiculo.cameraAtual()
-	local filtro = RaycastParams.new()
-	filtro.FilterType = Enum.RaycastFilterType.Exclude
-	local ignorar: { Instance } = { quad.modelo } -- nunca acerta o próprio quadriciclo...
-	local personagem = jogadorLocal.Character
-	if personagem then
-		table.insert(ignorar, personagem) -- ...nem você
-	end
-	filtro.FilterDescendantsInstances = ignorar
-	filtro.IgnoreWater = true
+	local filtro = filtroSemAgua or criarFiltro(quad, true) -- (nunca acerta o próprio veículo, nem você)
 	local hud = hudGancho
 	local raio: Ray
 	if hud then
@@ -751,14 +798,7 @@ local function atualizarEscalada(quad: Quadriciclo, presoAgora: boolean)
 	if presoAgora and quad.Config.GanchoEscalada and #quad.rodas > 0 then
 		-- Cada roda olha "para baixo" (do ponto de vista do carro): está encostada em alguma coisa?
 		local baixo = -Veiculo.referencia(quad).UpVector
-		local filtro = RaycastParams.new()
-		filtro.FilterType = Enum.RaycastFilterType.Exclude
-		local ignorar: { Instance } = { quad.modelo }
-		local personagem = jogadorLocal.Character
-		if personagem then
-			table.insert(ignorar, personagem)
-		end
-		filtro.FilterDescendantsInstances = ignorar
+		local filtro = filtroEscalada or criarFiltro(quad, false)
 		for _, info in quad.rodas do
 			local acerto = workspace:Raycast(info.roda.Position, baixo * (info.raio + 0.8), filtro)
 			if acerto and escalavel(acerto.Instance) then -- (NOVO) só conta superfície com a tag ParedeEscalavel
@@ -813,7 +853,8 @@ local forcaImpulso: VectorForce? = nil -- a força do puxão e do embalo (só ne
 local alinharPouso: AlignOrientation? = nil -- o "endireitador" do pouso
 local pousoAte = 0 -- (os.clock) até quando o pouso fica ligado
 -- (NOVO) BALANÇO ARCADE: pendurado, quem move o quadriciclo é um pêndulo simples (não a física de verdade).
--- Os números (mude aqui, ou coloque na Configuracao com o nome entre parênteses):
+-- Os números de verdade ficam na ConfiguracaoPadrao (BalancoGravidade, BalancoForca...): mude lá, ou na
+-- Configuracao de um veículo. Os daqui embaixo são só a "reserva" (valem se a Configuracao não tiver).
 local BALANCO_GRAVIDADE = 55 -- (BalancoGravidade) studs/s²: menor = balança mais devagar (a de verdade é 196)
 local BALANCO_FORCA = 42 -- (BalancoForca) studs/s²: quanto W/A/S/D empurram
 local BALANCO_VELOCIDADE_MAXIMA = 55 -- (BalancoVelocidadeMaxima) studs/s: o mais rápido que ele balança
@@ -889,16 +930,9 @@ local function cordaDoGancho(quad: Quadriciclo): RopeConstraint?
 end
 
 -- Alguma roda tem chão logo embaixo dela? (um raio para BAIXO saindo do meio de cada roda)
+-- (Não conta o próprio veículo nem você; passar por cima de um rio também vale.)
 local function rodaNoChao(quad: Quadriciclo): boolean
-	local filtro = RaycastParams.new()
-	filtro.FilterType = Enum.RaycastFilterType.Exclude
-	local ignorar: { Instance } = { quad.modelo } -- não conta o próprio quadriciclo...
-	local personagem = jogadorLocal.Character
-	if personagem then
-		table.insert(ignorar, personagem) -- ...nem você
-	end
-	filtro.FilterDescendantsInstances = ignorar
-	filtro.IgnoreWater = true -- (passar por cima de um rio também vale)
+	local filtro = filtroSemAgua or criarFiltro(quad, true)
 	for _, info in quad.rodas do
 		if workspace:Raycast(info.roda.Position, Vector3.new(0, -(info.raio + 1), 0), filtro) then
 			return true
@@ -1960,6 +1994,8 @@ end
 
 -- Sentou: liga os controles do gancho, a troca de gancho, o HUD, a câmera de mira e o laço de cada frame.
 function Gancho.ligar(quad: Quadriciclo)
+	filtroSemAgua = criarFiltro(quad, true)
+	filtroEscalada = criarFiltro(quad, false)
 	-- Controle (L1) e celular (botão GANCHO): segure para mirar, solte para lançar. (O Q saiu.)
 	ContextActionService:BindActionAtPriority(ACAO_GANCHO, function(_nomeAcao: string, estado: Enum.UserInputState, _entrada: InputObject): Enum.ContextActionResult?
 		aoGancho(quad, estado)
@@ -2024,6 +2060,7 @@ function Gancho.desligar(quad: Quadriciclo)
 	conexaoCordaGancho, conexaoHudGancho = nil, nil
 	desligarCameraOmbro()
 	destruirHudGancho()
+	filtroSemAgua, filtroEscalada = nil, nil
 end
 
 -- =====================================================================

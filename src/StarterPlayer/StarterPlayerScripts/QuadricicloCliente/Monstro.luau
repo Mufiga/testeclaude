@@ -76,6 +76,7 @@ type Estado = {
 
 local estado: Estado? = nil
 local ultimaAtualizacao = 0
+local vigia: RBXScriptConnection? = nil -- (rede de segurança, só enquanto alguém dirige o caminhão)
 
 -- Devolve o valor como uma Instance (ou nil, se ele não for uma).
 local function comoInstancia(valor: any): Instance?
@@ -466,6 +467,11 @@ end
 
 -- Parou de dirigir: tira a força, o botão e a barrinha, e a câmera volta ao normal.
 local function desligar()
+	local conexao = vigia
+	if conexao then
+		conexao:Disconnect()
+	end
+	vigia = nil
 	local atual = estado
 	estado = nil
 	if atual == nil then
@@ -509,6 +515,14 @@ function Monstro.atualizar(quad: any, dt: number, pedal: number?, volante: numbe
 	end
 	if estado == nil then
 		estado = ligar(quad)
+		if estado and vigia == nil then
+			-- Rede de segurança: se o QuadricicloCliente parar de chamar o atualizar (1 s), desliga tudo.
+			vigia = RunService.Heartbeat:Connect(function()
+				if estado and os.clock() - ultimaAtualizacao > 1 then
+					desligar()
+				end
+			end)
+		end
 	end
 	local atual = estado
 	if atual == nil then
@@ -602,12 +616,10 @@ function Monstro.atualizar(quad: any, dt: number, pedal: number?, volante: numbe
 	end
 end
 
--- Se o QuadricicloCliente parou de chamar o atualizar (saiu do banco), desliga tudo.
-RunService.Heartbeat:Connect(function()
-	if estado and os.clock() - ultimaAtualizacao > 1 then
-		desligar()
-	end
-end)
+-- Parou de dirigir (o QuadricicloCliente chama): desliga tudo NA HORA.
+function Monstro.desligar()
+	desligar()
+end
 
 return Monstro
 

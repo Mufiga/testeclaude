@@ -104,21 +104,10 @@ local function criarEfeitosDaRoda(quad: Quadriciclo, manga: BasePart, roda: Base
 	faisca:GetPropertyChangedSignal("Enabled"):Connect(function()
 		luz.Enabled = faisca.Enabled -- estrelinhas ligadas = luz acesa
 	end)
-
-	local faisca = Instance.new("ParticleEmitter") -- faíscas laranja que pulam e caem rápido
-	faisca.Texture = "rbxasset://textures/particles/sparkles_main.dds"
-	faisca.Color = ColorSequence.new(Color3.fromRGB(255, 225, 120), Color3.fromRGB(255, 120, 30))
-	faisca.LightEmission = 1
-	faisca.LightInfluence = 0
-	faisca.Size = NumberSequence.new(0.25, 0)
-	faisca.Lifetime = NumberRange.new(0.15, 0.35)
-	faisca.Rate = 70
-	faisca.Speed = NumberRange.new(8, 16)
-	faisca.SpreadAngle = Vector2.new(60, 60)
-	faisca.Acceleration = Vector3.new(0, -60, 0)
-	faisca.EmissionDirection = Enum.NormalId.Top
-	faisca.Enabled = false
-	faisca.Parent = anexo
+	-- (CORRIGIDO) Aqui embaixo existia uma SEGUNDA "faisca" (as faíscas laranja antigas, 70 por
+	-- segundo, por roda). Ela tinha o mesmo nome e "escondia" esta: as estrelinhas e a luz nunca
+	-- acendiam, e as faíscas antigas pesavam 7 vezes mais. Agora valem as estrelinhas, como o
+	-- comentário lá em cima sempre disse.
 	return fumaca, faisca
 end
 
@@ -191,6 +180,10 @@ local atritoTravadas = -1 -- o atrito de agora das rodas que o freio trava (-1 =
 local atritoSoltas = -1 -- o atrito de agora das rodas soltas
 local relogioFreio = os.clock() -- para medir o tempo entre um frame e outro
 local estacionado = false -- (NOVO) true = freio de ESTACIONAR (puxado devagar): 4 rodas travadas e atrito normal
+local atritoAplicado = -1 -- o atrito que está DE VERDADE nas rodas travadas (arredondado: muda menos vezes)
+local atritoSoltasAplicado = -1 -- o mesmo, nas rodas soltas
+local filtroDoChao: RaycastParams? = nil -- os raios do chão ignoram o veículo e você (criado quando você senta)
+local ultimoChaoDerrapando = 0 -- (os.clock) a última vez que uma roda estava no chão derrapando
 
 -- Um número da Configuracao (ou o padrão, se a Configuracao ainda não tiver esse valor).
 local function numeroDaConfig(valor: unknown, padrao: number): number
@@ -222,16 +215,10 @@ end
 -- (NOVO) Alguma roda está encostada no chão? (um raio para "baixo" do quadriciclo, saindo do meio de
 -- cada roda.) Pendurado no gancho ou voando, nenhuma está: sem fumaça, sem faísca e sem som.
 local function rodaNoChao(quad: Quadriciclo): boolean
-	local filtro = RaycastParams.new()
-	filtro.FilterType = Enum.RaycastFilterType.Exclude
-	local ignorar: { Instance } = { quad.modelo } -- não conta o próprio quadriciclo...
-	local piloto = quad.assento.Occupant
-	local personagem = if piloto then piloto.Parent else nil
-	if personagem then
-		table.insert(ignorar, personagem) -- ...nem quem está dirigindo
+	local filtro = filtroDoChao
+	if filtro == nil then
+		return false
 	end
-	filtro.FilterDescendantsInstances = ignorar
-	filtro.IgnoreWater = true
 	local baixo = -Veiculo.referencia(quad).UpVector -- o "baixo" do quadriciclo (funciona em rampa)
 	for _, info in quad.rodas do
 		if workspace:Raycast(info.roda.Position, baixo * (info.raio + 0.75), filtro) then
@@ -319,11 +306,15 @@ function FreioDeMao.atualizar(quad: Quadriciclo, volante: number?)
 	if atritoTravadas < 0 then
 		atritoTravadas, atritoSoltas = normal, normal -- primeira vez: começa do normal
 	end
-	local novoTravadas = aproximarAtrito(atritoTravadas, alvoTravadas, dt)
-	local novoSoltas = aproximarAtrito(atritoSoltas, alvoSoltas, dt)
-	if novoTravadas ~= atritoTravadas or novoSoltas ~= atritoSoltas then
-		atritoTravadas, atritoSoltas = novoTravadas, novoSoltas
-		aplicarAtrito(quad, novoTravadas, novoSoltas) -- (só mexe nas rodas quando o atrito muda)
+	atritoTravadas = aproximarAtrito(atritoTravadas, alvoTravadas, dt)
+	atritoSoltas = aproximarAtrito(atritoSoltas, alvoSoltas, dt)
+	-- (OTIMIZADO) Nas rodas vai o atrito ARREDONDADO (de 0,01 em 0,01): ele muda poucas vezes por
+	-- segundo em vez de todo frame. Trocar o atrito de uma peça é "caro" para a física.
+	local travadasAgora = math.round(atritoTravadas * 100) / 100
+	local soltasAgora = math.round(atritoSoltas * 100) / 100
+	if travadasAgora ~= atritoAplicado or soltasAgora ~= atritoSoltasAplicado then
+		atritoAplicado, atritoSoltasAplicado = travadasAgora, soltasAgora
+		aplicarAtrito(quad, travadasAgora, soltasAgora)
 	end
 
 	-- 2b) (NOVO) Derrapando: não gira sozinho (só para onde você virar). Voltando da derrapada: sem giro exagerado.
@@ -333,8 +324,9 @@ function FreioDeMao.atualizar(quad: Quadriciclo, volante: number?)
 
 	-- 2c) (NOVO) FREIO DE ESTACIONAR: atrito normal na hora e as 4 rodas travadas com força.
 	if estacionado then
-		if atritoTravadas ~= normal or atritoSoltas ~= normal then
-			atritoTravadas, atritoSoltas = normal, normal
+		atritoTravadas, atritoSoltas = normal, normal
+		if atritoAplicado ~= normal or atritoSoltasAplicado ~= normal then
+			atritoAplicado, atritoSoltasAplicado = normal, normal
 			aplicarAtrito(quad, normal, normal)
 		end
 		for _, info in quad.rodas do
@@ -343,7 +335,12 @@ function FreioDeMao.atualizar(quad: Quadriciclo, volante: number?)
 		end
 	end
 	-- 3) FUMAÇA, FAÍSCAS E SOM: só derrapando DE VERDADE, com alguma roda no chão.
-	local efeitos = derrapando and rodaNoChao(quad)
+	--    (Um quiquezinho de menos de 0,15 s no ar não apaga e acende tudo de novo: fica mais
+	--    bonito e manda bem menos avisos pela internet.)
+	if derrapando and rodaNoChao(quad) then
+		ultimoChaoDerrapando = agora
+	end
+	local efeitos = derrapando and agora - ultimoChaoDerrapando < 0.15
 	quad.mostrarDerrapagem(efeitos, math.clamp(velocidade / 25, 0.35, 1)) -- você vê e ouve na hora...
 	if efeitos ~= derrapandoAvisado then
 		derrapandoAvisado = efeitos
@@ -353,6 +350,19 @@ end
 
 -- Sentou: liga a tecla do freio de mão.
 function FreioDeMao.ligar(quad: Quadriciclo)
+	-- Os raios do chão não contam o próprio veículo nem quem está dirigindo.
+	local filtro = RaycastParams.new()
+	filtro.FilterType = Enum.RaycastFilterType.Exclude
+	local ignorar: { Instance } = { quad.modelo }
+	local piloto = quad.assento.Occupant
+	local personagem = if piloto then piloto.Parent else nil
+	if personagem then
+		table.insert(ignorar, personagem)
+	end
+	filtro.FilterDescendantsInstances = ignorar
+	filtro.IgnoreWater = true
+	filtroDoChao = filtro
+	ultimoChaoDerrapando = 0
 	ContextActionService:BindActionAtPriority(ACAO_FREIO_DE_MAO, function(_nomeAcao: string, estado: Enum.UserInputState, _entrada: InputObject): Enum.ContextActionResult?
 		quad.freioDeMao = Veiculo.segurando(estado)
 		return Enum.ContextActionResult.Sink
@@ -361,12 +371,13 @@ function FreioDeMao.ligar(quad: Quadriciclo)
 end
 
 -- Levantou: tudo volta ao normal.
--- Levantou: tudo volta ao normal.
 function FreioDeMao.desligar(quad: Quadriciclo)
 	ContextActionService:UnbindAction(ACAO_FREIO_DE_MAO)
 	quad.freioDeMao = false
 	aplicarAtrito(quad, quad.Config.TireFriction, quad.Config.TireFriction) -- (NOVO) todas as rodas com o atrito normal
 	atritoTravadas, atritoSoltas = -1, -1 -- (o próximo quadriciclo começa do normal dele)
+	atritoAplicado, atritoSoltasAplicado = -1, -1
+	filtroDoChao = nil
 	quad.mostrarDerrapagem(false)
 	if derrapandoAvisado then
 		derrapandoAvisado = false

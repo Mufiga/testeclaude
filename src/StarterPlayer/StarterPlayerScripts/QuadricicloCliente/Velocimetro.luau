@@ -100,9 +100,15 @@ local function destruirVelocimetro(quad: Quadriciclo)
 end
 
 -- Roda em paralelo (task.spawn) e atualiza o HUD a cada frame.
+-- (OTIMIZADO) Só mexe no texto e na barra quando o que aparece na tela MUDA: menos trabalho
+-- para a interface (o texto, por exemplo, muda poucas vezes por segundo).
 local function atualizarVelocimetro(quad: Quadriciclo, sessao: number)
 	local exibida = 0 -- velocidade suavizada: a barra desliza em vez de tremer com a suspensão
 	local dt = 0
+	local numeroNaTela = -1 -- o número que já está escrito
+	local barraNaTela = -1 -- o tamanho da barra que já está na tela (de 0 a 1, arredondado)
+	local corNaTela = -1 -- a velocidade (arredondada) da cor que já está na barra
+	local botaoNaTela: boolean? = nil
 	while sessaoDoLaco == sessao do
 		-- Velocidade ao longo do chão embaixo do carro (na ladeira conta a descida inteira).
 		local velocidade = quad.chassi.AssemblyLinearVelocity
@@ -110,18 +116,33 @@ local function atualizarVelocimetro(quad: Quadriciclo, sessao: number)
 		local noChao = (velocidade - cima * velocidade:Dot(cima)).Magnitude
 		exibida += (noChao - exibida) * math.min(dt * 12, 1)
 		local texto, barra = textoVelocimetro, barraVelocimetro
-		if texto then
-			-- O número vai até Config.VelocidadeMaximaTotal (ladeira + nitro).
-			texto.Text = `Velocidade: {math.min(math.floor(exibida + 0.5), quad.Config.VelocidadeMaximaTotal)}`
+		-- O número vai até Config.VelocidadeMaximaTotal (ladeira + nitro).
+		local numero = math.min(math.floor(exibida + 0.5), quad.Config.VelocidadeMaximaTotal)
+		if texto and numero ~= numeroNaTela then
+			numeroNaTela = numero
+			texto.Text = `Velocidade: {numero}`
 		end
 		if barra then
-			barra.Size = UDim2.fromScale(math.clamp(exibida / VELOCIDADE_BARRA_CHEIA, 0, 1), 1) -- 0 a 30 → 0 a 1
-			barra.BackgroundColor3 = corDaBarra(exibida)
+			local cheia = math.round(math.clamp(exibida / VELOCIDADE_BARRA_CHEIA, 0, 1) * 200) / 200 -- 0 a 30 → 0 a 1
+			if cheia ~= barraNaTela then
+				barraNaTela = cheia
+				barra.Size = UDim2.fromScale(cheia, 1)
+			end
+			-- (a cor continua mudando mesmo com a barra cheia: vermelha a partir de 35, azul em 100)
+			local velocidadeDaCor = math.round(exibida)
+			if velocidadeDaCor ~= corNaTela then
+				corNaTela = velocidadeDaCor
+				barra.BackgroundColor3 = corDaBarra(exibida)
+			end
 		end
 		local botao = botaoDesvirar
 		if botao then
 			-- Aparece quando já dá para desvirar (tombado há Config.TempoParaDesvirar segundos).
-			botao.Visible = quad.tombadoHaQuanto >= math.max(TEMPO_TOMBADO_PARA_BOTAO, quad.Config.TempoParaDesvirar)
+			local mostrar = quad.tombadoHaQuanto >= math.max(TEMPO_TOMBADO_PARA_BOTAO, quad.Config.TempoParaDesvirar)
+			if mostrar ~= botaoNaTela then
+				botaoNaTela = mostrar
+				botao.Visible = mostrar
+			end
 		end
 		dt = task.wait() -- espera 1 frame
 	end

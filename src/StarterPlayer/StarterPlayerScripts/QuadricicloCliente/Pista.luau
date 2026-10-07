@@ -115,6 +115,8 @@ type Roda = {
 	bordaB: Attachment,
 	marca: Trail,
 	chao: string?, -- o tipo de chão embaixo dela agora (nil = nenhum dos tipos, ou no ar)
+	corDaTerra: string?, -- de que chão é a cor que a terra voando está agora (só troca quando muda)
+	corDaMarca: string?, -- de que chão é a cor da marca agora (só troca quando muda)
 }
 -- Um "bloco" = um grupo de peças soldadas que se mexe junto (o chassi, cada manga, cada roda...)
 type Bloco = { parte: BasePart, forca: VectorForce }
@@ -144,6 +146,8 @@ type Estado = {
 
 local estado: Estado? = nil
 local ultimaAtualizacao = 0
+local ligarExtras: () -> () -- (a câmera da pista e a rede de segurança: as funções vêm lá embaixo)
+local desligarExtras: () -> ()
 
 -- Devolve o valor como uma Instance (ou nil, se ele não for uma).
 local function comoInstancia(valor: any): Instance?
@@ -397,6 +401,8 @@ local function ligar(quad: any): Estado?
 					bordaB = bordaB,
 					marca = marca,
 					chao = nil,
+					corDaTerra = nil,
+					corDaMarca = nil,
 				})
 			end
 		end
@@ -452,6 +458,7 @@ local function ligar(quad: any): Estado?
 end
 
 local function desligar()
+	desligarExtras()
 	local atual = estado
 	estado = nil
 	if atual == nil then
@@ -489,6 +496,9 @@ function Pista.atualizar(quad: any, dt: number)
 	end
 	if estado == nil then
 		estado = ligar(quad)
+		if estado then
+			ligarExtras() -- (a câmera da pista só roda enquanto alguém dirige o caminhão)
+		end
 	end
 	local atual = estado
 	if atual == nil then
@@ -675,14 +685,18 @@ function Pista.atualizar(quad: any, dt: number)
 		local nomeDoChao = roda.chao
 		local chao = if nomeDoChao then CHAOS[nomeDoChao] else nil
 		if chao and TERRA_VOANDO and rapidez > 6 then
-			roda.terra.Color = chao.terra
+			if roda.corDaTerra ~= nomeDoChao then -- (a cor só muda quando muda o chão)
+				roda.corDaTerra = nomeDoChao
+				roda.terra.Color = chao.terra
+			end
 			roda.terra.Rate = 40 * chao.quantidade * quantoCorre
 		else
 			roda.terra.Rate = 0
 		end
 		local corDaMarca = if chao then chao.marca else nil
 		local marcar = MARCAS_NA_TERRA and corDaMarca ~= nil and rapidez > 2
-		if marcar and corDaMarca then
+		if marcar and corDaMarca and roda.corDaMarca ~= nomeDoChao then
+			roda.corDaMarca = nomeDoChao
 			roda.marca.Color = ColorSequence.new(corDaMarca)
 		end
 		if roda.marca.Enabled ~= marcar then
@@ -707,7 +721,8 @@ local cameraPresa = false
 local cimaDaCamera = Vector3.yAxis
 local frenteDaCamera = Vector3.new(0, 0, -1)
 
-RunService:BindToRenderStep("PistaCamera", Enum.RenderPriority.Last.Value + 1, function(dt: number)
+local CAMERA_DA_PISTA = "PistaCamera" -- nome da tarefa (BindToRenderStep)
+local function passoDaCamera(dt: number)
 	local camera = workspace.CurrentCamera
 	local atual = estado
 	if camera == nil or atual == nil or atual.chassi.Parent == nil then
@@ -758,14 +773,45 @@ RunService:BindToRenderStep("PistaCamera", Enum.RenderPriority.Last.Value + 1, f
 	local posicao = inicio + caminho.Unit * distancia
 	local perseguir = CFrame.lookAt(posicao, pivo + cimaDaCamera * 2, cimaDaCamera)
 	camera.CFrame = camera.CFrame:Lerp(perseguir, mistura)
-end)
+end
 
--- Se o QuadricicloCliente parou de chamar o atualizar (saiu do banco), desliga tudo.
-RunService.Heartbeat:Connect(function()
-	if estado and os.clock() - ultimaAtualizacao > 1 then
-		desligar()
+-- A câmera da pista e a rede de segurança só existem enquanto alguém dirige o caminhão.
+local extrasLigados = false
+local vigia: RBXScriptConnection? = nil
+
+ligarExtras = function()
+	if extrasLigados then
+		return
 	end
-end)
+	extrasLigados = true
+	RunService:BindToRenderStep(CAMERA_DA_PISTA, Enum.RenderPriority.Last.Value + 1, passoDaCamera)
+	-- Rede de segurança: se o QuadricicloCliente parar de chamar o atualizar (1 s), desliga tudo.
+	vigia = RunService.Heartbeat:Connect(function()
+		if estado and os.clock() - ultimaAtualizacao > 1 then
+			desligar()
+		end
+	end)
+end
+
+desligarExtras = function()
+	if not extrasLigados then
+		return
+	end
+	extrasLigados = false
+	RunService:UnbindFromRenderStep(CAMERA_DA_PISTA)
+	local conexao = vigia
+	if conexao then
+		conexao:Disconnect()
+	end
+	vigia = nil
+	mistura = 0 -- (a câmera volta a ser a normal)
+	cameraPresa = false
+end
+
+-- Parou de dirigir (o QuadricicloCliente chama): desliga tudo NA HORA.
+function Pista.desligar()
+	desligar()
+end
 
 return Pista
 

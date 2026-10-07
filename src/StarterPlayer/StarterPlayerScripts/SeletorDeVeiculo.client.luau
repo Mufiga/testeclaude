@@ -29,6 +29,8 @@ local UserInputService = game:GetService("UserInputService")
 local jogador = Players.LocalPlayer :: Player
 local remoto = ReplicatedStorage:WaitForChild("Garagem") :: RemoteEvent -- (criado pelo script Spawner)
 local moldes = ReplicatedStorage:WaitForChild("Quadriciclos")
+-- A lista dos veículos, o nome/descrição e o veículo 3D dos cartões (o mesmo da GaragemCliente).
+local Vitrine = require(ReplicatedStorage:WaitForChild("Compartilhado"):WaitForChild("Vitrine"))
 
 -- =====================================================================
 -- AJUSTES
@@ -41,6 +43,8 @@ local LARGURA = 264 -- (pixels) a largura do HUD
 local MAXIMO_DE_CARTOES = 4 -- mais veículos que isso: a lista rola
 local ENCOLHIDO_NO_CELULAR = true -- no celular, o HUD começa encolhido (só o título)
 local GIRO_DA_VITRINE = 1.2 -- (radianos/s) o giro do veículo no cartão (com o mouse em cima, e o escolhido)
+local GIRO_DO_ESCOLHIDO_POR_SEGUNDO = 30 -- quantas vezes por segundo o veículo ESCOLHIDO é redesenhado girando
+--                                          (com o mouse em cima: todo frame). Menos = mais leve para o computador.
 -- AS CORES: azul-escuro no fundo, DOURADO para o escolhido e para o caminho, VERDE para chamar
 local COR_PAINEL = Color3.fromRGB(16, 21, 32)
 local COR_CARTAO = Color3.fromRGB(29, 37, 53)
@@ -65,10 +69,6 @@ local VOLUME = 0.5
 -- =====================================================================
 -- FERRAMENTAS (deixam o código da tela mais curto)
 -- =====================================================================
-local function numero(valor: unknown, padrao: number): number
-	return if typeof(valor) == "number" then valor else padrao
-end
-
 local function arredondar(objeto: GuiObject, raio: number)
 	local canto = Instance.new("UICorner")
 	canto.CornerRadius = UDim.new(0, raio)
@@ -107,32 +107,6 @@ end
 -- Uma animação suave (Tween) de algumas propriedades.
 local function animar(objeto: Instance, segundos: number, metas: { [string]: any }, estilo: Enum.EasingStyle?)
 	TweenService:Create(objeto, TweenInfo.new(segundos, estilo or Enum.EasingStyle.Quad, Enum.EasingDirection.Out), metas):Play()
-end
-
--- Um texto do molde (atributo), com um "plano B". O caminhão monstro é uma CÓPIA do quadriciclo:
--- se ele ainda estiver com o texto do quadriciclo (ou sem texto), usa o texto próprio dele.
-local function textoDoMolde(molde: Instance, atributo: string, doMonstro: string, padrao: string): string
-	local valor = molde:GetAttribute(atributo)
-	local temTexto = typeof(valor) == "string" and valor ~= ""
-	if molde:GetAttribute("Monstro") == true then
-		if not temTexto then
-			return doMonstro
-		end
-		for _, outro in moldes:GetChildren() do
-			if outro ~= molde and outro:GetAttribute("Monstro") ~= true and outro:GetAttribute(atributo) == valor then
-				return doMonstro -- (herdou o texto do quadriciclo quando foi copiado)
-			end
-		end
-	end
-	return if temTexto then tostring(valor) else padrao
-end
-
-local function nomeBonito(molde: Instance): string
-	return textoDoMolde(molde, "NomeExibido", "Caminhão Monstro", molde.Name)
-end
-
-local function descricao(molde: Instance): string
-	return textoDoMolde(molde, "Descricao", "Grandão: super pulo (J) e mortais", "")
 end
 
 -- =====================================================================
@@ -377,27 +351,6 @@ local function selecionar(nome: string)
 	end
 end
 
--- Coloca uma CÓPIA do veículo dentro do ViewportFrame, com uma câmera olhando para ele.
-local function montarVitrine(viewport: ViewportFrame, molde: Model): (Camera, CFrame)
-	local copia = molde:Clone() :: Model -- (o "::" só confirma para o Studio que a cópia é um Model)
-	for _, coisa in copia:GetDescendants() do
-		if coisa:IsA("BaseScript") or coisa:IsA("ModuleScript") or coisa:IsA("Sound") then
-			coisa:Destroy() -- a vitrine é só para ver: sem scripts e sem sons
-		end
-	end
-	local caixa, tamanho = copia:GetBoundingBox() -- a "caixa" que cabe o veículo inteiro
-	copia:PivotTo(copia:GetPivot() - caixa.Position) -- o meio dele fica no ponto (0, 0, 0)
-	copia.Parent = viewport
-	local camera = Instance.new("Camera")
-	camera.FieldOfView = 40
-	local distancia = tamanho.Magnitude * 1.05 -- veículo maior = câmera mais longe (todos ficam do mesmo tamanho)
-	local inicio = CFrame.lookAt(Vector3.new(distancia * 0.72, distancia * 0.38, distancia * 0.72), Vector3.zero)
-	camera.CFrame = inicio
-	camera.Parent = viewport
-	viewport.CurrentCamera = camera
-	return camera, inicio
-end
-
 local escolherCartao: (Cartao) -> () -- (a função vem mais embaixo; aqui só avisamos que ela existe)
 
 local function criarCartao(molde: Model, ordem: number)
@@ -433,7 +386,7 @@ local function criarCartao(molde: Model, ordem: number)
 	vitrine.LightColor = Color3.new(1, 1, 1)
 	vitrine.LightDirection = Vector3.new(-1, -1, -0.6)
 	vitrine.Parent = fundo
-	local camera, inicio = montarVitrine(vitrine, molde)
+	local camera, inicio = Vitrine.montar(vitrine, molde, 1.05) -- (a CÓPIA do veículo, com uma câmera olhando para ele)
 
 	-- a etiqueta "EM USO" (em cima da vitrine)
 	local emUso = novoTexto(quadro, "EM USO", 10, COR_TEXTO_ESCURO, Enum.Font.GothamBlack)
@@ -464,11 +417,11 @@ local function criarCartao(molde: Model, ordem: number)
 	visto.ZIndex = 4
 
 	-- o NOME e a DESCRIÇÃO, à direita
-	local nome = novoTexto(quadro, nomeBonito(molde), 15, COR_TEXTO, Enum.Font.GothamBlack)
+	local nome = novoTexto(quadro, Vitrine.nomeBonito(molde), 15, COR_TEXTO, Enum.Font.GothamBlack)
 	nome.Position = UDim2.fromOffset(94, 9)
 	nome.Size = UDim2.new(1, -100, 0, 18)
 	caber(nome, 15)
-	local sobre = novoTexto(quadro, descricao(molde), 12, COR_TEXTO_FRACO, Enum.Font.GothamMedium)
+	local sobre = novoTexto(quadro, Vitrine.descricao(molde), 12, COR_TEXTO_FRACO, Enum.Font.GothamMedium)
 	sobre.Position = UDim2.fromOffset(94, 30)
 	sobre.Size = UDim2.new(1, -100, 0, 34)
 	sobre.TextWrapped = true
@@ -525,23 +478,7 @@ local function montarCartoes()
 			filho:Destroy()
 		end
 	end
-	local ordenados: { Model } = {}
-	for _, molde in moldes:GetChildren() do
-		if molde:IsA("Model") then
-			table.insert(ordenados, molde)
-		end
-	end
-	table.sort(ordenados, function(a: Model, b: Model): boolean
-		local ordemA, ordemB = numero(a:GetAttribute("Ordem"), 999), numero(b:GetAttribute("Ordem"), 999)
-		if ordemA ~= ordemB then
-			return ordemA < ordemB
-		end
-		local monstroA, monstroB = a:GetAttribute("Monstro") == true, b:GetAttribute("Monstro") == true
-		if monstroA ~= monstroB then
-			return monstroB -- (o que NÃO é monstro vem primeiro)
-		end
-		return a.Name < b.Name
-	end)
+	local ordenados = Vitrine.ordenar(moldes)
 	for i, molde in ordenados do
 		criarCartao(molde, i)
 	end
@@ -1009,13 +946,23 @@ end)
 -- =====================================================================
 -- A CADA FRAME: os veículos dos cartões giram, o botão pulsa, a bússola e a seta 3D apontam
 -- =====================================================================
+local tempoDoGiro = 0 -- (s) desde a última vez que o veículo escolhido foi redesenhado
 RunService.RenderStepped:Connect(function(dt: number)
 	if not encolhido then
 		-- 1) gira o veículo do cartão com o mouse em cima, e o escolhido (dirigindo, só o do mouse: economiza)
+		--    (OTIMIZADO) O escolhido é redesenhado GIRO_DO_ESCOLHIDO_POR_SEGUNDO vezes por segundo, e não
+		--    todo frame: cada redesenho da vitrine desenha o veículo inteiro de novo (o caminhão tem 100+ peças).
+		tempoDoGiro += dt
+		local redesenharEscolhido = tempoDoGiro >= 1 / GIRO_DO_ESCOLHIDO_POR_SEGUNDO
+		if redesenharEscolhido then
+			tempoDoGiro = 0
+		end
 		for nome, cartao in cartoes do
 			if cartao.aceso or (nome == escolhido and not dirigindo) then
-				cartao.angulo += dt * GIRO_DA_VITRINE
-				cartao.camera.CFrame = CFrame.Angles(0, cartao.angulo, 0) * cartao.inicio
+				cartao.angulo += dt * GIRO_DA_VITRINE -- (a velocidade do giro continua a mesma)
+				if cartao.aceso or redesenharEscolhido then
+					cartao.camera.CFrame = CFrame.Angles(0, cartao.angulo, 0) * cartao.inicio
+				end
 			end
 		end
 		-- 2) o botão: cresce com o mouse, afunda ao apertar e o CHAMAR "respira" com uma aura verde

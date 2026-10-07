@@ -83,6 +83,7 @@ type Estado = {
 }
 
 local estado: Estado? = nil -- nil = ninguém dirigindo agora
+local ligarCamera: () -> () -- (a função vem lá embaixo, junto com a câmera; aqui só avisamos que ela existe)
 local ultimaAtualizacao = 0 -- (os.clock) a última vez que o QuadricicloCliente chamou o atualizar
 local aceleracaoNaCurva = Vector3.zero -- a aceleração "deitada" (a câmera usa para inclinar)
 local inclinacaoCamera = 0 -- (radianos) quanto a câmera está inclinada agora
@@ -222,7 +223,9 @@ local function prepararMolas(quad: any, chassi: BasePart, lista: { Mola })
 			depois = mola.Damping / critico
 		end
 	end
-	print(string.format("[Sensacao] %d molas · balanço (1 = nada) antes %.2f, agora %.2f", #molas, antes, depois))
+	if quad.Config and quad.Config.DEBUG_MODE then -- (só no modo DEBUG, para não encher o Output)
+		print(string.format("[Sensacao] %d molas · balanço (1 = nada) antes %.2f, agora %.2f", #molas, antes, depois))
+	end
 end
 
 -- Começou a dirigir: prepara as rodas, as molas e a força do "peso".
@@ -328,6 +331,9 @@ function Sensacao.atualizar(quad: any, dt: number)
 	end
 	if estado == nil then
 		estado = ligar(quad)
+		if estado then
+			ligarCamera() -- (a inclinação da câmera só roda enquanto alguém dirige)
+		end
 	end
 	local agora = estado
 	if agora == nil then
@@ -438,11 +444,14 @@ end
 
 -- =====================================================================
 -- A CÂMERA (roda todo frame, depois de todas as câmeras): inclina para dentro da curva.
--- E se o QuadricicloCliente parou de chamar o atualizar (saiu do banco), desliga tudo.
+-- Só fica ligada enquanto alguém dirige (e até a câmera voltar ao normal depois).
 -- =====================================================================
-RunService:BindToRenderStep("SensacaoCamera", Enum.RenderPriority.Last.Value, function(dt: number)
+local CAMERA_DA_SENSACAO = "SensacaoCamera" -- nome da tarefa (BindToRenderStep)
+local cameraRodando = false
+
+local function passoDaCamera(dt: number)
 	if estado and os.clock() - ultimaAtualizacao > 1 then
-		desligar() -- (1 s sem ser chamado = saiu do banco)
+		desligar() -- (rede de segurança: 1 s sem ser chamado = saiu do banco)
 	end
 	local camera = workspace.CurrentCamera
 	if camera == nil then
@@ -457,8 +466,25 @@ RunService:BindToRenderStep("SensacaoCamera", Enum.RenderPriority.Last.Value, fu
 	inclinacaoCamera += (alvo - inclinacaoCamera) * math.min(dt * 4, 1) -- vai e volta suave
 	if math.abs(inclinacaoCamera) > 0.0005 then
 		camera.CFrame *= CFrame.Angles(0, 0, inclinacaoCamera) -- gira a câmera em volta de onde ela olha
+	elseif estado == nil then
+		-- Ninguém dirigindo e a câmera já voltou ao normal: para de rodar a cada frame.
+		inclinacaoCamera = 0
+		cameraRodando = false
+		RunService:UnbindFromRenderStep(CAMERA_DA_SENSACAO)
 	end
-end)
+end
+
+ligarCamera = function()
+	if not cameraRodando then
+		cameraRodando = true
+		RunService:BindToRenderStep(CAMERA_DA_SENSACAO, Enum.RenderPriority.Last.Value, passoDaCamera)
+	end
+end
+
+-- Parou de dirigir (o QuadricicloCliente chama): desliga tudo NA HORA.
+function Sensacao.desligar()
+	desligar()
+end
 
 return Sensacao
 

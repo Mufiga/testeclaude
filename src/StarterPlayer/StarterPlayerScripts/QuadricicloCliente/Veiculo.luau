@@ -14,6 +14,11 @@
 	    estacionar, desvirar e os avisos do DEBUG_MODE.
 ]]
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Os valores padrão de TODOS os ajustes (o que faltar na Configuracao de um veículo vem daqui).
+local Padrao = require(ReplicatedStorage:WaitForChild("Compartilhado"):WaitForChild("ConfiguracaoPadrao"))
+
 local Veiculo = {}
 
 -- Constantes que vários módulos usam.
@@ -51,7 +56,7 @@ export type Roda = {
 export type Quadriciclo = {
 	-- PEÇAS (achadas quando o quadriciclo aparece no seu jogo)
 	modelo: Model,
-	pastaScripts: Instance, -- a pasta "Scripts" (Configuracao, Servidor e o RemoteEvent)
+	pastaScripts: Instance, -- a pasta "Scripts" (Configuracao e o RemoteEvent)
 	chassi: BasePart,
 	assento: VehicleSeat,
 	pastaRodas: Instance,
@@ -133,7 +138,7 @@ function Veiculo.novo(modelo: Model): Quadriciclo?
 		chassi = chassi,
 		assento = assento,
 		pastaRodas = pastaRodas,
-		Config = Config,
+		Config = Padrao.completar(Config), -- (o que faltar vem da ConfiguracaoPadrao)
 
 		mostrarNitro = nadaAFazer,
 		tocarBuzina = nadaAFazer,
@@ -208,7 +213,7 @@ function Veiculo.criarSom(quad: Quadriciclo, nome: string, id: string, repetir: 
 end
 
 -- Manda uma ação pelo RemoteEvent "AcaoQuadriciclo" deste quadriciclo.
--- O Servidor confere se você é o motorista e repassa para os outros jogadores.
+-- O QuadricicloServidor confere se você é o motorista e repassa para os outros jogadores.
 function Veiculo.avisarServidor(quad: Quadriciclo, acao: string, ...: any)
 	local evento = quad.pastaScripts:FindFirstChild("AcaoQuadriciclo")
 	if evento and evento:IsA("RemoteEvent") then
@@ -263,7 +268,7 @@ function Veiculo.prepararRodas(quad: Quadriciclo): boolean
 			or not (mola and mola:IsA("SpringConstraint"))
 			or not (motor and motor:IsA("HingeConstraint"))
 		then
-			continue -- pasta incompleta (o Servidor já avisa no Output)
+			continue -- pasta incompleta (o QuadricicloServidor já avisa no Output)
 		end
 
 		local eixoMotor = motor.Attachment0
@@ -365,7 +370,7 @@ function Veiculo.fatorDiferencial(quad: Quadriciclo, info: Roda, anguloGraus: nu
 	return math.sqrt(dx * dx + dz * dz) / raioCurva
 end
 
--- Deixa as rodas seguras e o guidão reto (igual ao "estacionar" do Servidor).
+-- Deixa as rodas seguras e o guidão reto (igual ao "estacionar" do QuadricicloServidor).
 function Veiculo.estacionar(quad: Quadriciclo)
 	for _, info in quad.rodas do
 		info.motor.AngularVelocity = 0

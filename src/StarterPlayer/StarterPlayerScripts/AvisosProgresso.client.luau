@@ -33,6 +33,7 @@ local COR_ERRO = Color3.fromRGB(255, 90, 90) -- vermelho
 local SOM_MOEDA = "" -- (opcional) "rbxassetid://..." de um som de moeda
 local SOM_CHECKPOINT = "" -- (opcional) "rbxassetid://..." de um som de conquista
 local GIRO_DA_MOEDA = 2 -- (radianos/s) velocidade do giro das moedas
+local DISTANCIA_DAS_MOEDAS = 300 -- (studs) só as moedas perto da câmera giram (as longe ficam paradas: economiza)
 
 -- =====================================================================
 -- MENSAGENS NA TELA
@@ -92,17 +93,26 @@ end
 -- =====================================================================
 -- CHECKPOINTS JÁ PASSADOS FICAM VERDES (só na sua tela)
 -- =====================================================================
-local coresOriginais: { [BasePart]: Color3 } = {}
+local coresOriginais: { [BasePart]: Color3 } = setmetatable({}, { __mode = "k" }) :: any
+
+-- Um número (também aceita número escrito como TEXTO, ex.: "1"), ou nil.
+local function comoNumero(valor: unknown): number?
+	if typeof(valor) == "number" then
+		return valor
+	elseif typeof(valor) == "string" then
+		return tonumber(valor)
+	end
+	return nil
+end
 
 local function pintarCheckpoints()
-	local atributo = jogador:GetAttribute("Checkpoint") -- (o servidor guarda aqui o seu último checkpoint)
-	local passado = if typeof(atributo) == "number" then atributo else 0
+	local passado = comoNumero(jogador:GetAttribute("Checkpoint")) or 0 -- (o servidor guarda aqui o seu último checkpoint)
 	for _, objeto in CollectionService:GetTagged(TAG_CHECKPOINT) do
 		if objeto:IsA("BasePart") then
 			local original = coresOriginais[objeto] or objeto.Color
 			coresOriginais[objeto] = original
-			local numeroDele = objeto:GetAttribute("Numero")
-			objeto.Color = if typeof(numeroDele) == "number" and numeroDele <= passado then COR_CHECKPOINT else original
+			local numeroDele = comoNumero(objeto:GetAttribute("Numero"))
+			objeto.Color = if numeroDele and numeroDele <= passado then COR_CHECKPOINT else original
 		end
 	end
 end
@@ -132,12 +142,33 @@ CollectionService:GetInstanceRemovedSignal(TAG_MOEDA):Connect(function(objeto: I
 end)
 
 -- A cada frame: cada moeda gira em volta do "de pé" e sobe e desce um pouquinho.
+-- (OTIMIZADO) Só as moedas perto da câmera (e que não estão escondidas), e todas de uma vez só
+-- (workspace:BulkMoveTo é bem mais rápido que mudar o CFrame de uma por uma).
+local moedasParaMover: { BasePart } = {}
+local lugaresNovos: { CFrame } = {}
 RunService.RenderStepped:Connect(function()
+	local camera = workspace.CurrentCamera
+	if camera == nil then
+		return
+	end
+	local daCamera = camera.CFrame.Position
 	local agora = os.clock()
 	local flutuar = Vector3.new(0, math.sin(agora * 2) * 0.3, 0)
 	local giro = CFrame.Angles(0, agora * GIRO_DA_MOEDA, 0)
+	local quantas = 0
 	for moeda, lugar in lugarDasMoedas do
-		moeda.CFrame = CFrame.new(lugar.Position + flutuar) * giro * lugar.Rotation
+		if not escondidas[moeda] and (lugar.Position - daCamera).Magnitude <= DISTANCIA_DAS_MOEDAS then
+			quantas += 1
+			moedasParaMover[quantas] = moeda
+			lugaresNovos[quantas] = CFrame.new(lugar.Position + flutuar) * giro * lugar.Rotation
+		end
+	end
+	for i = #moedasParaMover, quantas + 1, -1 do -- (tira as sobras da vez passada)
+		moedasParaMover[i] = nil
+		lugaresNovos[i] = nil
+	end
+	if quantas > 0 then
+		workspace:BulkMoveTo(moedasParaMover, lugaresNovos, Enum.BulkMoveMode.FireCFrameChanged)
 	end
 end)
 

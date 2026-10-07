@@ -22,6 +22,8 @@ local ProximityPromptService = game:GetService("ProximityPromptService")
 local jogador = Players.LocalPlayer :: Player
 local remoto = ReplicatedStorage:WaitForChild("Garagem") :: RemoteEvent
 local moldes = ReplicatedStorage:WaitForChild("Quadriciclos")
+-- A lista dos veículos, o nome/descrição e o veículo 3D dos cartões (o mesmo do SeletorDeVeiculo).
+local Vitrine = require(ReplicatedStorage:WaitForChild("Compartilhado"):WaitForChild("Vitrine"))
 
 -- =====================================================================
 -- AJUSTES
@@ -38,10 +40,6 @@ local GIRO_DA_VITRINE = 0.6 -- (radianos/s) velocidade do giro dos quadriciclos 
 -- =====================================================================
 -- FERRAMENTAS (deixam o código da tela mais curto)
 -- =====================================================================
-local function numero(valor: unknown, padrao: number): number
-	return if typeof(valor) == "number" then valor else padrao
-end
-
 local function arredondar(objeto: GuiObject, raio: number)
 	local canto = Instance.new("UICorner")
 	canto.CornerRadius = UDim.new(0, raio)
@@ -67,12 +65,6 @@ local function novoTexto(pai: Instance, texto: string, tamanho: number, cor: Col
 	etiqueta.TextXAlignment = Enum.TextXAlignment.Left
 	etiqueta.Parent = pai
 	return etiqueta
-end
-
--- O nome que aparece no cartão: o atributo "NomeExibido" do molde (ou o nome do Model).
-local function nomeBonito(molde: Instance): string
-	local nome = molde:GetAttribute("NomeExibido")
-	return if typeof(nome) == "string" and nome ~= "" then nome else molde.Name
 end
 
 -- =====================================================================
@@ -186,22 +178,7 @@ local precisaMontar = true -- true = refazer os cartões na próxima vez que abr
 
 -- Coloca uma CÓPIA do quadriciclo dentro do ViewportFrame, com uma câmera olhando para ele.
 local function montarVitrine(viewport: ViewportFrame, molde: Model)
-	local copia = molde:Clone() :: Model -- (o "::" só confirma para o Studio que a cópia é um Model)
-	for _, coisa in copia:GetDescendants() do
-		if coisa:IsA("BaseScript") or coisa:IsA("ModuleScript") or coisa:IsA("Sound") then
-			coisa:Destroy() -- a vitrine é só para ver: sem scripts e sem sons
-		end
-	end
-	local caixa, tamanho = copia:GetBoundingBox() -- a "caixa" que cabe o quadriciclo inteiro
-	copia:PivotTo(copia:GetPivot() - caixa.Position) -- o meio dele fica no ponto (0, 0, 0)
-	copia.Parent = viewport
-	local camera = Instance.new("Camera")
-	camera.FieldOfView = 40
-	local distancia = tamanho.Magnitude * 1.15 -- quadriciclo maior = câmera mais longe
-	local inicio = CFrame.lookAt(Vector3.new(distancia * 0.72, distancia * 0.38, distancia * 0.72), Vector3.zero)
-	camera.CFrame = inicio
-	camera.Parent = viewport
-	viewport.CurrentCamera = camera
+	local camera, inicio = Vitrine.montar(viewport, molde, 1.15) -- (1.15: a câmera um pouco mais longe)
 	table.insert(vitrines, { camera = camera, inicio = inicio })
 end
 
@@ -215,7 +192,7 @@ local function selecionar(nome: string)
 		TweenService:Create(cartao.escala, TweenInfo.new(0.15), { Scale = if este then 1.04 else 1 }):Play()
 	end
 	local molde = moldes:FindFirstChild(nome)
-	estado.Text = if molde then `Selecionado: {nomeBonito(molde)}` else ""
+	estado.Text = if molde then `Selecionado: {Vitrine.nomeBonito(molde)}` else ""
 end
 
 local function criarCartao(molde: Model, ordem: number)
@@ -256,12 +233,11 @@ local function criarCartao(molde: Model, ordem: number)
 	vitrine.Parent = fundo
 	montarVitrine(vitrine, molde)
 
-	local nome = novoTexto(cartao, nomeBonito(molde), 18, Color3.new(1, 1, 1), Enum.Font.GothamBlack)
+	local nome = novoTexto(cartao, Vitrine.nomeBonito(molde), 18, Color3.new(1, 1, 1), Enum.Font.GothamBlack)
 	nome.Position = UDim2.new(0, 12, 0.7, 6)
 	nome.Size = UDim2.new(1, -24, 0, 22)
 	nome.TextTruncate = Enum.TextTruncate.AtEnd
-	local textoDaDescricao = molde:GetAttribute("Descricao")
-	local descricao = novoTexto(cartao, if typeof(textoDaDescricao) == "string" then textoDaDescricao else "", 13, COR_TEXTO_FRACO, Enum.Font.GothamMedium)
+	local descricao = novoTexto(cartao, Vitrine.descricao(molde), 13, COR_TEXTO_FRACO, Enum.Font.GothamMedium)
 	descricao.Position = UDim2.new(0, 12, 0.7, 30)
 	descricao.Size = UDim2.new(1, -24, 0.3, -38)
 	descricao.TextWrapped = true
@@ -279,7 +255,7 @@ local function criarCartao(molde: Model, ordem: number)
 	cartoes[molde.Name] = { contorno = contorno, escala = escala }
 end
 
--- (Re)faz todos os cartões, na ordem do atributo "Ordem" (e depois pelo nome).
+-- (Re)faz todos os cartões, na ordem do atributo "Ordem" (a mesma ordem do HUD de veículos).
 local function montarCartoes()
 	precisaMontar = false
 	table.clear(vitrines)
@@ -289,19 +265,7 @@ local function montarCartoes()
 			filho:Destroy()
 		end
 	end
-	local ordenados: { Model } = {}
-	for _, molde in moldes:GetChildren() do
-		if molde:IsA("Model") then
-			table.insert(ordenados, molde)
-		end
-	end
-	table.sort(ordenados, function(a: Model, b: Model): boolean
-		local ordemA, ordemB = numero(a:GetAttribute("Ordem"), 999), numero(b:GetAttribute("Ordem"), 999)
-		if ordemA ~= ordemB then
-			return ordemA < ordemB
-		end
-		return a.Name < b.Name
-	end)
+	local ordenados = Vitrine.ordenar(moldes)
 	for i, molde in ordenados do
 		criarCartao(molde, i)
 	end

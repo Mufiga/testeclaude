@@ -35,6 +35,7 @@ local BoostPads = {}
 local TAG_BOOST = "BoostPad"
 local ESPERA_DO_PAD = 1 -- (s) o mesmo pad só empurra de novo depois disso
 local SOM_DO_BOOST = "" -- (opcional) "rbxassetid://..." de um som de "vuuush"
+local DISTANCIA_DAS_SETAS = 300 -- (studs) só as setas dos pads perto da câmera piscam (as longe ficam paradas: economiza)
 
 local pads: { BasePart } = {} -- todos os pads do mapa (a lista se atualiza sozinha)
 local setasDoPad: { [BasePart]: { { BasePart } } } = {} -- as setas de cada pad (cada seta pode ter várias Parts)
@@ -88,9 +89,19 @@ local function remover(objeto: Instance)
 end
 
 -- A cada frame: as setas acendem uma depois da outra, como uma onda indo para a frente.
+-- (OTIMIZADO) Só os pads perto da câmera: num mapa grande, com muitos pads, os que você nem está
+-- vendo não ficam mudando a cada frame.
 local function animarSetas()
+	local camera = workspace.CurrentCamera
+	if camera == nil then
+		return
+	end
+	local daCamera = camera.CFrame.Position
 	local tempo = os.clock() * 4
-	for _, grupos in setasDoPad do
+	for pad, grupos in setasDoPad do
+		if (pad.Position - daCamera).Magnitude > DISTANCIA_DAS_SETAS then
+			continue
+		end
 		for i, grupo in grupos do
 			local brilho = (math.sin(tempo - i * 1.3) + 1) / 2 -- 0 = apagada · 1 = acesa
 			for _, parte in grupo do

@@ -7,21 +7,23 @@
 
 	UM script só, para TODOS os quadriciclos do mapa. Roda no computador ou
 	celular de cada jogador e:
-	  - Acha cada quadriciclo (o Servidor de cada um marca o Model com a tag
-	    "Quadriciclo") e liga os efeitos que todo mundo vê e ouve: fogo do
-	    nitro, buzina, fumaça do freio de mão e o gancho voando.
+	  - Acha cada quadriciclo (o QuadricicloServidor marca o Model com a tag
+	    "Quadriciclo" quando ele fica pronto) e liga os efeitos que todo mundo
+	    vê e ouve: fogo do nitro, buzina, fumaça do freio de mão e o gancho voando.
 	  - Quando VOCÊ senta no banco de um deles, liga os controles, o HUD e a
 	    câmera. A cada frame calcula aceleração, freio e direção e aplica nos
 	    motores (HingeConstraint) e na direção (CylindricalConstraint).
 	  - Quando você levanta, desliga tudo e deixa o quadriciclo estacionado.
 
-	Por que aqui e não no servidor? Porque o Servidor passa a física
+	Por que aqui e não no servidor? Porque o QuadricicloServidor passa a física
 	(Network Ownership) para quem senta. Mudar os motores AQUI tem efeito
 	imediato, sem esperar a internet: zero lag no controle.
 
 	Cada assunto fica num ModuleScript aqui dentro: Veiculo, Velocimetro,
-	Camera, Nitro, Buzina, FreioDeMao, Ladeira, Gancho e TeclasMenu.
-	Os valores de ajuste continuam na Configuracao de cada quadriciclo.
+	Camera, Nitro, Buzina, FreioDeMao, Ladeira, Gancho, TeclasMenu, BoostPads,
+	Sensacao, Monstro e Pista.
+	Os valores de ajuste ficam na Configuracao de cada quadriciclo (e na
+	ReplicatedStorage > Compartilhado > ConfiguracaoPadrao).
 
 	Controles:
 	  PC ........ W/↑ acelera · S/↓ freia e dá ré · A/D ou ←/→ vira · R desvira
@@ -41,7 +43,7 @@ local RunService = game:GetService("RunService")
 local ContextActionService = game:GetService("ContextActionService")
 local CollectionService = game:GetService("CollectionService")
 
--- Antes de tudo, confere se os 9 ModuleScripts estão aqui dentro (com o nome certinho).
+-- Antes de tudo, confere se os 13 ModuleScripts estão aqui dentro (com o nome certinho).
 for _, nome in { "Veiculo", "Velocimetro", "Camera", "Nitro", "Buzina", "FreioDeMao", "Ladeira", "Gancho", "TeclasMenu", "BoostPads", "Sensacao", "Monstro", "Pista" } do
 	if script:WaitForChild(nome, 5) == nil then
 		warn(`[Quadriciclo] Falta o ModuleScript "{nome}" dentro do QuadricicloCliente (StarterPlayerScripts).`
@@ -72,7 +74,7 @@ local jogadorLocal = Players.LocalPlayer :: Player
 -- =====================================================================
 -- CONSTANTES INTERNAS (normalmente não precisa mexer)
 -- =====================================================================
-local TAG_QUADRICICLO = "Quadriciclo" -- o Servidor de cada quadriciclo coloca esta tag no Model
+local TAG_QUADRICICLO = "Quadriciclo" -- o QuadricicloServidor coloca esta tag no Model quando ele fica pronto
 
 local ACAO_ACELERAR = "QuadricicloAcelerar"
 local ACAO_FREAR = "QuadricicloFrear"
@@ -232,10 +234,11 @@ end
 -- o outro aplicar o tranco ("Pancada"): lá é onde a física dele é calculada.
 local APROXIMACAO_MINIMA = 20 -- (studs/s) precisa ir DE ENCONTRO a ele (encostar andando junto não conta)
 local ESPERA_PANCADA = 1 -- (s) o mesmo quadriciclo só leva outra pancada sua depois disso
-local ultimaPancada: { [Model]: number } = {}
+local ultimaPancada: { [Model]: number } = setmetatable({}, { __mode = "k" }) :: any -- (veículos apagados somem daqui sozinhos)
 local velocidadeAnterior = Vector3.zero -- a sua velocidade no frame passado...
 local quandoAnterior = 0 -- ...e quando ela foi medida (os.clock)
 local conexaoPancada: RBXScriptConnection? = nil
+local filtroPancada: OverlapParams? = nil -- (criado uma vez quando você senta: ignora o seu veículo e você)
 
 -- O quadriciclo (Model com a tag "Quadriciclo") de quem esta peça faz parte, ou nil.
 local function quadricicloDaPeca(peca: Instance): Model?
@@ -260,17 +263,10 @@ local function procurarPancada(quad: Quadriciclo, dt: number)
 	local minima = quad.Config.BaterVelocidadeMinima
 	local cima = Veiculo.referencia(quad).UpVector
 	local noVelocimetro = (velocidade - cima * velocidade:Dot(cima)).Magnitude -- (a mesma conta do velocímetro)
-	if typeof(minima) ~= "number" or noVelocimetro < minima then
+	local filtro = filtroPancada
+	if typeof(minima) ~= "number" or noVelocimetro < minima or filtro == nil then
 		return -- devagar (ou uma Configuracao sem a parte da PANCADA)
 	end
-	local filtro = OverlapParams.new()
-	filtro.FilterType = Enum.RaycastFilterType.Exclude
-	local ignorar: { Instance } = { quad.modelo } -- o seu quadriciclo...
-	local personagem = jogadorLocal.Character
-	if personagem then
-		table.insert(ignorar, personagem) -- ...e você não contam
-	end
-	filtro.FilterDescendantsInstances = ignorar
 	-- Uma caixa um pouco maior que o Chassi (mais rápido = um pouco maior): o que estiver encostando aparece aqui.
 	local folga = 3 + velocidade.Magnitude * dt
 	local encostando = workspace:GetPartBoundsInBox(quad.chassi.CFrame, quad.chassi.Size + Vector3.new(folga, folga, folga), filtro)
@@ -310,6 +306,16 @@ end
 
 -- Sentou: passa a ouvir as pancadas que o Servidor manda para ESTE quadriciclo.
 local function ligarPancada(quad: Quadriciclo)
+	-- O "filtro" da procura por outros veículos: o seu quadriciclo e você não contam.
+	local filtro = OverlapParams.new()
+	filtro.FilterType = Enum.RaycastFilterType.Exclude
+	local ignorar: { Instance } = { quad.modelo }
+	local personagem = jogadorLocal.Character
+	if personagem then
+		table.insert(ignorar, personagem)
+	end
+	filtro.FilterDescendantsInstances = ignorar
+	filtroPancada = filtro
 	local evento = quad.pastaScripts:FindFirstChild("AcaoQuadriciclo")
 	if evento and evento:IsA("RemoteEvent") then
 		conexaoPancada = evento.OnClientEvent:Connect(function(acao: unknown, mudanca: unknown, giro: unknown)
@@ -327,6 +333,7 @@ local function desligarPancada()
 		conexao:Disconnect()
 	end
 	conexaoPancada = nil
+	filtroPancada = nil
 end
 
 -- (NOVO) DESVIRAR MAIS ALTO + TREMOR NO POUSO
@@ -586,6 +593,11 @@ local function pararDeDirigir()
 	Velocimetro.desligar(quad)
 	Veiculo.estacionar(quad)
 	desligarPancada() -- (NOVO) para de ouvir as pancadas
+	-- Desliga NA HORA as forças e efeitos da sensação, do monstro e da pista. (Antes eles só
+	-- percebiam 1 segundo depois, e nesse meio tempo a "leveza no ar" e o "grudar no loop" continuavam.)
+	Sensacao.desligar()
+	Monstro.desligar()
+	Pista.desligar()
 	velocidadeAlvo = 0
 	if saidaPedida then -- saiu pelo E: dá o pulo para fora do quadriciclo
 		saidaPedida = false
@@ -612,7 +624,7 @@ local function conferirMotorista(quad: Quadriciclo)
 end
 
 -- =====================================================================
--- ACHAR OS QUADRICICLOS (tag "Quadriciclo", que o Servidor de cada um coloca)
+-- ACHAR OS QUADRICICLOS (tag "Quadriciclo", que o QuadricicloServidor coloca)
 -- =====================================================================
 local quadriciclos: { [Model]: Quadriciclo } = {} -- os que já estão funcionando no seu jogo
 local preparando: { [Model]: boolean } = {} -- esperando as peças chegarem
@@ -703,7 +715,8 @@ local function aoSentar(sentou: boolean, banco: BasePart?)
 	local antigoLigado = antigo ~= nil and antigo:IsA("BaseScript") and antigo.Enabled
 	if pastaScripts and pastaScripts:FindFirstChild("Configuracao") and not antigoLigado then
 		warn(`[Quadriciclo] "{modelo:GetFullName()}" está sem a tag "{TAG_QUADRICICLO}", então ninguém controla ele.`
-			.. ` Cole a linha modelo:AddTag("{TAG_QUADRICICLO}") no final do Servidor dele.`)
+			.. " Confira se o script QuadricicloServidor está no ServerScriptService e o Output do servidor"
+			.. " (em vermelho, ele explica o que está montado errado).")
 	end
 end
 

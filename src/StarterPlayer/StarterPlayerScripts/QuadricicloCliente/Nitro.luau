@@ -32,6 +32,8 @@ local COR_NITRO_RECARREGANDO = Color3.fromRGB(85, 70, 110) -- roxo apagado: aind
 
 local telaDaBarraNitro: ScreenGui? = nil
 local barraNitro: Frame? = nil
+local cargaNaTela = -1 -- o tamanho da barra que já está na tela (só mexe quando muda)
+local corNaTela: Color3? = nil
 
 -- =====================================================================
 -- FOGO ROXO, LUZ E SONS (todo mundo vê e ouve)
@@ -164,14 +166,24 @@ function Nitro.disponivel(quad: Quadriciclo): boolean
 		telaDaBarraNitro = tela
 		local achada = if tela then tela:FindFirstChild("BarraNitro", true) else nil
 		barraNitro = if achada and achada:IsA("Frame") then achada else nil
+		cargaNaTela, corNaTela = -1, nil -- (HUD novo: desenha de novo)
 	end
 	local barra = barraNitro
 	if barra then
-		barra.Size = UDim2.fromScale(quad.cargaNitro, 1)
-		barra.BackgroundColor3 = if quad.nitroAtivo
+		-- (OTIMIZADO) Só mexe na barra quando o que aparece na tela muda.
+		local carga = math.round(quad.cargaNitro * 200) / 200
+		if carga ~= cargaNaTela then
+			cargaNaTela = carga
+			barra.Size = UDim2.fromScale(carga, 1)
+		end
+		local cor = if quad.nitroAtivo
 			then COR_NITRO_USANDO
 			elseif quad.nitroTravado or quad.cargaNitro < Nitro.MINIMO_PARA_LIGAR then COR_NITRO_RECARREGANDO
 			else COR_NITRO_PRONTO
+		if cor ~= corNaTela then
+			corNaTela = cor
+			barra.BackgroundColor3 = cor
+		end
 	end
 
 	return quad.nitroPedido
