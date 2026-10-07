@@ -12,17 +12,20 @@
 	                vai servir para comprar skins, carros e turbos: a loja só vai precisar mexer em
 	                leaderstats.Dinheiro.Value, e este script salva sozinho.
 	  CHECKPOINT .. o último checkpoint alcançado: quando você morre ou reseta, nasce nele.
-	Tudo fica SALVO (DataStore): quando o jogador sai, a cada minuto e quando o servidor fecha.
+	Tudo fica SALVO (DataStore): quando o jogador sai, a cada minuto (só se mudou algo) e quando o
+	servidor fecha.
 
 	COMO MONTAR NO MAPA (na janela Properties, lá embaixo: "Tags" e "Attributes"):
 	  MARCO ZERO .. uma Part chamada "MarcoZero" no lobby (pode ser invisível e sem colisão).
 	                A altura dela é o 0 metro. Sem ela, vale a altura do SpawnLocation.
 	  CHECKPOINT .. uma Part com a tag "Checkpoint" e o atributo "Numero" (number): 1, 2, 3...
 	                na ordem do caminho. Dica: faça um "portal" grande e grosso (uns 10 studs), com
-	                CanCollide desligado, para o quadriciclo rápido não passar "pulando" por ele.
+	                CanCollide desligado, para o veículo rápido não passar "pulando" por ele.
 	                O jogador nasce em cima da parte de BAIXO dele.
 	  MOEDA ....... uma Part ancorada com a tag "Moeda". Atributo "Valor" (number) opcional (padrão 1).
 	                Cada jogador pega cada moeda de novo só depois de MOEDA_VOLTA segundos.
+	  (Criou o atributo como TEXTO ("string") sem querer? Funciona do mesmo jeito, mas o Output avisa
+	   para você trocar para "number".)
 
 	No Studio, para SALVAR funcionar: Home > Game Settings > Security >
 	"Enable Studio Access to API Services" (ligado). Sem isso, tudo funciona, mas não salva.
@@ -40,11 +43,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local STUDS_POR_METRO = 3.57 -- no Roblox, 1 stud ≈ 0,28 metro (então 3,57 studs = 1 metro)
 local MOEDA_VOLTA = 60 -- (s) a mesma moeda volta para o mesmo jogador depois disso
 local BONUS_CHECKPOINT = 10 -- dinheiro ganho ao chegar num checkpoint NOVO
-local SALVAR_A_CADA = 60 -- (s) salvamento automático
+local SALVAR_A_CADA = 60 -- (s) salvamento automático (só salva quem mudou alguma coisa)
 local NOME_DO_COFRE = "ProgressoQuadriciclo_v1" -- nome do DataStore (trocar = todo mundo recomeça do zero)
 local TAG_CHECKPOINT = "Checkpoint"
 local TAG_MOEDA = "Moeda"
-local TAG_QUADRICICLO = "Quadriciclo" -- (o Servidor de cada quadriciclo coloca esta tag no Model)
+local TAG_QUADRICICLO = "Quadriciclo" -- (o QuadricicloServidor coloca esta tag nos veículos prontos)
 
 -- O "aviso" para a tela do jogador (quem escuta é o LocalScript AvisosProgresso).
 local aviso = Instance.new("RemoteEvent")
@@ -70,29 +73,62 @@ local ZERO = alturaDoZero()
 -- =====================================================================
 -- O PROGRESSO DE CADA JOGADOR (enquanto ele está no jogo)
 -- =====================================================================
+type Dados = { dinheiro: number, metros: number, checkpoint: number }
 type Progresso = {
 	metros: IntValue, -- (na tabela do TAB) o recorde de altura
 	dinheiro: IntValue, -- (na tabela do TAB)
 	checkpoint: number, -- o último checkpoint alcançado (0 = nenhum ainda)
 	podeSalvar: boolean, -- false se não deu para carregar (assim não apaga o que já estava salvo)
 	moedas: { [BasePart]: number }, -- quando (os.clock) ele pegou cada moeda
+	ultimoSalvo: string, -- os dados da última vez que salvou (se não mudou nada, não precisa salvar de novo)
+	salvando: boolean, -- está salvando agora? (assim nunca salva duas vezes ao mesmo tempo)
 }
 local progressos: { [Player]: Progresso } = {}
 local cofre = DataStoreService:GetDataStore(NOME_DO_COFRE)
 
--- Um número (ou o padrão, se não for número).
+-- Um número (ou o padrão, se não for número). Aceita também número escrito como TEXTO ("1", "1555").
 local function numero(valor: unknown, padrao: number): number
-	return if typeof(valor) == "number" then valor else padrao
+	if typeof(valor) == "number" then
+		return valor
+	elseif typeof(valor) == "string" then
+		return tonumber(valor) or padrao
+	end
+	return padrao
+end
+
+-- Avisa (uma vez por peça) quando um atributo foi criado como TEXTO em vez de número.
+local avisadas: { [Instance]: boolean } = setmetatable({}, { __mode = "k" }) :: any
+local function conferirAtributoNumero(peca: Instance, atributo: string)
+	local valor = peca:GetAttribute(atributo)
+	if typeof(valor) == "string" and not avisadas[peca] then
+		avisadas[peca] = true
+		warn(`[Progresso] "{peca:GetFullName()}" tem o atributo "{atributo}" como TEXTO ("{valor}"). Funciona, mas`
+			.. ` o certo é apagar o atributo e criar de novo como "number".`)
+	end
+end
+
+-- O número de um checkpoint (atributo "Numero"), ou nil se não tiver.
+local function numeroDoCheckpoint(parte: Instance): number?
+	local valor = numero(parte:GetAttribute("Numero"), -1)
+	return if valor >= 0 then valor else nil
 end
 
 -- =====================================================================
 -- CARREGAR E SALVAR (DataStore)
 -- =====================================================================
+local function chave(jogador: Player): string
+	return "J_" .. jogador.UserId
+end
+
+local function emTexto(dados: Dados): string
+	return `{dados.dinheiro}|{dados.metros}|{dados.checkpoint}`
+end
+
 -- Lê o que está salvo (tenta 3 vezes). Devolve os dados e se deu certo.
-local function carregar(jogador: Player): ({ dinheiro: number, metros: number, checkpoint: number }, boolean)
+local function carregar(jogador: Player): (Dados, boolean)
 	for tentativa = 1, 3 do
 		local ok, salvo = pcall(function()
-			return cofre:GetAsync("J_" .. jogador.UserId)
+			return cofre:GetAsync(chave(jogador))
 		end)
 		if ok then
 			local tabela = if typeof(salvo) == "table" then salvo else {} -- jogador novo = tabela vazia
@@ -103,24 +139,46 @@ local function carregar(jogador: Player): ({ dinheiro: number, metros: number, c
 			}, true
 		end
 		warn(`[Progresso] Não deu para carregar {jogador.Name} (tentativa {tentativa}): {salvo}`)
-		task.wait(2)
+		if tentativa < 3 then
+			task.wait(2)
+		end
 	end
 	return { dinheiro = 0, metros = 0, checkpoint = 0 }, false
 end
 
+-- Salva (tenta 3 vezes). Se nada mudou desde o último salvamento, não gasta o DataStore à toa.
 local function salvar(jogador: Player)
 	local progresso = progressos[jogador]
 	if progresso == nil or not progresso.podeSalvar then
 		return
 	end
-	-- (copia os valores ANTES de esperar a internet)
-	local dados = { dinheiro = progresso.dinheiro.Value, metros = progresso.metros.Value, checkpoint = progresso.checkpoint }
-	local ok, erro = pcall(function()
-		cofre:SetAsync("J_" .. jogador.UserId, dados)
-	end)
-	if not ok then
-		warn(`[Progresso] Não deu para salvar {jogador.Name}: {erro}`)
+	while progresso.salvando do
+		task.wait(0.1) -- (outro salvamento deste jogador ainda está acontecendo: espera ele terminar)
 	end
+	-- (copia os valores ANTES de esperar a internet)
+	local dados: Dados = { dinheiro = progresso.dinheiro.Value, metros = progresso.metros.Value, checkpoint = progresso.checkpoint }
+	local texto = emTexto(dados)
+	if texto == progresso.ultimoSalvo then
+		return -- nada mudou
+	end
+	progresso.salvando = true
+	for tentativa = 1, 3 do
+		local ok, erro = pcall(function()
+			-- UpdateAsync é o jeito recomendado pelo Roblox para salvar (mais seguro que SetAsync).
+			cofre:UpdateAsync(chave(jogador), function(_antigo: unknown): Dados
+				return dados
+			end)
+		end)
+		if ok then
+			progresso.ultimoSalvo = texto
+			break
+		end
+		warn(`[Progresso] Não deu para salvar {jogador.Name} (tentativa {tentativa}): {erro}`)
+		if tentativa < 3 then
+			task.wait(2)
+		end
+	end
+	progresso.salvando = false
 end
 
 -- =====================================================================
@@ -129,7 +187,7 @@ end
 -- A Part do checkpoint com este número (ou nil).
 local function acharCheckpoint(numeroDele: number): BasePart?
 	for _, objeto in CollectionService:GetTagged(TAG_CHECKPOINT) do
-		if objeto:IsA("BasePart") and objeto:GetAttribute("Numero") == numeroDele then
+		if objeto:IsA("BasePart") and numeroDoCheckpoint(objeto) == numeroDele then
 			return objeto
 		end
 	end
@@ -156,8 +214,8 @@ end
 -- Chegou num checkpoint: se for um NOVO (número maior que o atual), guarda e dá o bônus.
 local function chegouNoCheckpoint(jogador: Player, parte: BasePart)
 	local progresso = progressos[jogador]
-	local numeroDele = parte:GetAttribute("Numero")
-	if progresso == nil or typeof(numeroDele) ~= "number" or numeroDele <= progresso.checkpoint then
+	local numeroDele = numeroDoCheckpoint(parte)
+	if progresso == nil or numeroDele == nil or numeroDele <= progresso.checkpoint then
 		return -- ainda carregando, checkpoint sem número, ou um que ele já passou
 	end
 	progresso.checkpoint = numeroDele
@@ -186,8 +244,26 @@ local function pegouMoeda(jogador: Player, moeda: BasePart)
 end
 
 -- =====================================================================
--- QUEM ENCOSTOU? Um personagem, ou um quadriciclo (aí vale todo mundo sentado nele)
+-- QUEM ENCOSTOU? Um personagem, ou um veículo (aí vale todo mundo sentado nele)
 -- =====================================================================
+-- Os bancos de cada veículo (procurados uma vez só: o caminhão monstro tem mais de 100 peças).
+local bancosDoVeiculo: { [Model]: { VehicleSeat | Seat } } = setmetatable({}, { __mode = "k" }) :: any
+
+local function bancosDe(modelo: Model): { VehicleSeat | Seat }
+	local bancos = bancosDoVeiculo[modelo]
+	if bancos == nil then
+		local lista: { VehicleSeat | Seat } = {}
+		for _, filho in modelo:GetChildren() do
+			if filho:IsA("VehicleSeat") or filho:IsA("Seat") then
+				table.insert(lista, filho)
+			end
+		end
+		bancosDoVeiculo[modelo] = lista
+		bancos = lista
+	end
+	return bancos
+end
+
 local function jogadoresDaPeca(peca: BasePart): { Player }
 	local modelo = peca:FindFirstAncestorOfClass("Model")
 	while modelo do
@@ -197,13 +273,8 @@ local function jogadoresDaPeca(peca: BasePart): { Player }
 		end
 		if CollectionService:HasTag(modelo, TAG_QUADRICICLO) then
 			local lista: { Player } = {}
-			for _, filho in modelo:GetChildren() do
-				local humanoide: Humanoid? = nil
-				if filho:IsA("VehicleSeat") then
-					humanoide = filho.Occupant
-				elseif filho:IsA("Seat") then
-					humanoide = filho.Occupant
-				end
+			for _, banco in bancosDe(modelo) do
+				local humanoide = banco.Occupant
 				local personagem = if humanoide then humanoide.Parent else nil
 				local dono = if personagem and personagem:IsA("Model") then Players:GetPlayerFromCharacter(personagem) else nil -- (o IsA confirma que é um Model)
 				if dono then
@@ -223,6 +294,7 @@ local function prepararCheckpoint(objeto: Instance)
 		return
 	end
 	local parte: BasePart = objeto
+	conferirAtributoNumero(parte, "Numero")
 	parte.CanTouch = true
 	parte.Touched:Connect(function(outra: BasePart)
 		for _, jogador in jogadoresDaPeca(outra) do
@@ -236,8 +308,9 @@ local function prepararMoeda(objeto: Instance)
 		return
 	end
 	local moeda: BasePart = objeto
+	conferirAtributoNumero(moeda, "Valor")
 	moeda.CanTouch = true
-	moeda.CanCollide = false -- moeda não é parede: o quadriciclo passa por dentro
+	moeda.CanCollide = false -- moeda não é parede: o veículo passa por dentro
 	moeda.Touched:Connect(function(outra: BasePart)
 		for _, jogador in jogadoresDaPeca(outra) do
 			pegouMoeda(jogador, moeda)
@@ -275,7 +348,13 @@ local function aoEntrar(jogador: Player)
 	metros.Value = dados.metros
 	dinheiro.Value = dados.dinheiro
 	progressos[jogador] = {
-		metros = metros, dinheiro = dinheiro, checkpoint = dados.checkpoint, podeSalvar = deuCerto, moedas = {},
+		metros = metros,
+		dinheiro = dinheiro,
+		checkpoint = dados.checkpoint,
+		podeSalvar = deuCerto,
+		moedas = {},
+		ultimoSalvo = emTexto(dados), -- (acabou de carregar: igual ao que está salvo)
+		salvando = false,
 	}
 	jogador:SetAttribute("Checkpoint", dados.checkpoint)
 	pasta.Parent = jogador
@@ -321,7 +400,7 @@ task.spawn(function()
 end)
 
 -- =====================================================================
--- SALVAR: a cada minuto, e quando o servidor fecha
+-- SALVAR: a cada minuto (quem mudou algo), e quando o servidor fecha
 -- =====================================================================
 task.spawn(function()
 	while true do
@@ -337,7 +416,7 @@ game:BindToClose(function()
 	for jogador in progressos do
 		faltam += 1
 		task.spawn(function()
-			salvar(jogador)
+			salvar(jogador) -- (se o PlayerRemoving já estiver salvando este jogador, espera e não salva de novo)
 			faltam -= 1
 		end)
 	end

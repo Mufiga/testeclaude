@@ -13,7 +13,8 @@
 
 	COMO MONTAR:
 	  1) Em ReplicatedStorage, crie uma pasta "Quadriciclos" e coloque dentro os MOLDES dos
-	     quadriciclos. Ex.: MOVA o seu "Quadriciclo" do Workspace para lá (com os Scripts dentro).
+	     quadriciclos. Ex.: MOVA o seu "Quadriciclo" do Workspace para lá (com a pasta Scripts e a
+	     Configuracao dentro). Quem prepara cada veículo que aparece é o QuadricicloServidor.
 	     Atributos opcionais no Model do molde: "NomeExibido" e "Descricao" (texto) e "Ordem"
 	     (número: a posição do cartão na tela).
 	  2) Um SPAWNER é um Model com a tag "SpawnerQuadriciclo", com estas Parts dentro:
@@ -30,9 +31,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- AJUSTES
 -- =====================================================================
 local TAG_SPAWNER = "SpawnerQuadriciclo"
+local TAG_PRONTO = "Quadriciclo" -- o QuadricicloServidor coloca esta tag quando o veículo está pronto
 local DISTANCIA_MAXIMA = 40 -- (studs) mais longe que isso do PontoDeSpawn, o pedido é recusado
 local ESPERA_ENTRE_PEDIDOS = 3 -- (s) tempo mínimo entre um quadriciclo novo e outro
 local SENTAR_SOZINHO = true -- o jogador já senta no quadriciclo novo
+local ESPERA_MAXIMA_PRONTO = 5 -- (s) espera o veículo ficar pronto até isso para sentar
 local ALTURA_DO_SPAWN = 2 -- (studs) o quadriciclo aparece um pouquinho acima do PontoDeSpawn
 
 -- Pega uma pasta (ou cria, se ainda não existir).
@@ -150,7 +153,7 @@ local function spawnar(jogador: Player, molde: Model, ponto: BasePart)
 	local quad = molde:Clone() :: Model -- (o "::" só confirma para o Studio que a cópia é um Model)
 	quad:SetAttribute("Dono", jogador.UserId)
 	posicionar(quad, ponto)
-	quad.Parent = pastaDosQuads -- no Workspace, o Servidor do quadriciclo liga sozinho
+	quad.Parent = pastaDosQuads -- no Workspace, o QuadricicloServidor prepara ele sozinho
 	quadDoJogador[jogador] = quad
 	quad.AncestryChanged:Connect(function()
 		-- sumiu (caiu do mapa, foi apagado...)? esquece ele
@@ -160,7 +163,16 @@ local function spawnar(jogador: Player, molde: Model, ponto: BasePart)
 	end)
 	remoto:FireClient(jogador, "Pronto")
 	if SENTAR_SOZINHO then
-		task.delay(0.5, function() -- espera o Servidor do quadriciclo ficar pronto
+		task.spawn(function()
+			-- Espera o QuadricicloServidor terminar de preparar o veículo (ele coloca a tag "Quadriciclo").
+			-- Normalmente leva 1 ou 2 frames: o jogador senta assim que der, sem esperar à toa.
+			local limite = os.clock() + ESPERA_MAXIMA_PRONTO
+			while not quad:HasTag(TAG_PRONTO) and quad.Parent ~= nil and os.clock() < limite do
+				task.wait()
+			end
+			if not quad:HasTag(TAG_PRONTO) then
+				return -- (não ficou pronto: montado errado? O Output explica. Ou foi apagado.)
+			end
 			local personagem = jogador.Character
 			local humanoide = if personagem then personagem:FindFirstChildOfClass("Humanoid") else nil
 			local banco = quad:FindFirstChildWhichIsA("VehicleSeat", true)

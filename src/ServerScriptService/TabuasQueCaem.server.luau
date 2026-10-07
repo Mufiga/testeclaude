@@ -20,7 +20,7 @@ local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 
 local TAG_TABUA = "TabuaQueCai"
-local TAG_QUADRICICLO = "Quadriciclo" -- (o Servidor de cada quadriciclo coloca esta tag no Model)
+local TAG_QUADRICICLO = "Quadriciclo" -- (o QuadricicloServidor coloca esta tag nos veículos prontos)
 local TEMPO_CAINDO = 1.5 -- (s) quanto tempo ela fica caindo antes de sumir (para não cair para sempre)
 
 local caindo: { [BasePart]: boolean } = {} -- as tábuas que já estão tremendo ou caindo agora
@@ -51,6 +51,7 @@ local function derrubar(tabua: BasePart)
 	local lugar = tabua.CFrame -- guarda como ela era, para voltar igualzinha
 	local transparencia = tabua.Transparency
 	local colide = tabua.CanCollide
+	local consulta = tabua.CanQuery
 	local espera = math.max(numero(tabua:GetAttribute("Espera"), 0.6), 0)
 	local volta = math.max(numero(tabua:GetAttribute("Volta"), 5), espera + TEMPO_CAINDO + 0.5)
 	local comeco = os.clock()
@@ -78,10 +79,12 @@ local function derrubar(tabua: BasePart)
 	tabua.AssemblyAngularVelocity = Vector3.zero
 	tabua.CFrame = lugar
 	tabua.Transparency = 1
+	tabua.CanQuery = false -- (invisível: os raios atravessam, e o gancho não prende numa tábua que "não existe")
 
 	-- 4) VOLTA: depois do tempo, aparece de novo, inteira.
 	task.wait(math.max(volta - (os.clock() - comeco), 0))
 	tabua.Transparency = transparencia
+	tabua.CanQuery = consulta
 	tabua.CanCollide = colide
 	caindo[tabua] = nil
 end
