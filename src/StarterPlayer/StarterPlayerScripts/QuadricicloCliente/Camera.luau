@@ -20,6 +20,7 @@ local UserInputService = game:GetService("UserInputService") -- (NOVO) para trav
 local TweenService = game:GetService("TweenService") -- (NOVO) anima o aviso do mouse (aparecer e sumir)
 
 local Veiculo = require(script.Parent:WaitForChild("Veiculo"))
+local BotoesDoCelular = require(script.Parent:WaitForChild("BotoesDoCelular")) -- (NOVO) os botões da tela no celular
 type Quadriciclo = Veiculo.Quadriciclo
 
 local Camera = {}
@@ -529,13 +530,12 @@ function Camera.ligar(quad: Quadriciclo)
 	zoomMinimo, zoomMaximo = jogadorLocal.CameraMinZoomDistance, jogadorLocal.CameraMaxZoomDistance
 	local achado = quad.modelo:FindFirstChild("CameraCapo", true)
 	anexoCapo = if achado and achado:IsA("Attachment") then achado else nil
-	ContextActionService:BindActionAtPriority(ACAO_CAMERA, function(_nomeAcao: string, estado: Enum.UserInputState, _entrada: InputObject): Enum.ContextActionResult?
+	BotoesDoCelular.ligar(ACAO_CAMERA, "CAMERA", function(_nomeAcao: string, estado: Enum.UserInputState, _entrada: InputObject): Enum.ContextActionResult?
 		if estado == Enum.UserInputState.Begin then
 			trocarCamera(quad)
 		end
 		return Enum.ContextActionResult.Sink
-	end, true, Veiculo.PRIORIDADE, Enum.KeyCode.C, Enum.KeyCode.ButtonY)
-	ContextActionService:SetTitle(ACAO_CAMERA, "CÂMERA")
+	end, Veiculo.PRIORIDADE, Enum.KeyCode.C, Enum.KeyCode.ButtonY)
 	ligarEfeitoVelocidade(quad) -- (NOVO) sensação de velocidade: a câmera abre, riscos e tremidinha
 	-- (NOVO) A câmera do Roblox que segue o mouse (no capô, a câmera é nossa) e o mouse travado.
 	if quad.modoCamera ~= 3 then
@@ -546,7 +546,7 @@ end
 
 -- Levantou: desliga a tecla e volta para a câmera normal.
 function Camera.desligar(quad: Quadriciclo)
-	ContextActionService:UnbindAction(ACAO_CAMERA)
+	BotoesDoCelular.desligar(ACAO_CAMERA)
 	desligarEfeitoVelocidade()
 	desligarTravaDoMouse() -- (NOVO) o mouse volta ao normal e o aviso some
 	if quad.modoCamera ~= 1 then

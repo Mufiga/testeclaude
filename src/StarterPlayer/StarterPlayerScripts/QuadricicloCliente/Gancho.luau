@@ -28,6 +28,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService") -- (NOVO) anima o vento sumindo e o "PERFEITO!"
 
 local Veiculo = require(script.Parent:WaitForChild("Veiculo"))
+local BotoesDoCelular = require(script.Parent:WaitForChild("BotoesDoCelular")) -- (NOVO) os botões da tela no celular
 local CameraModulo = require(script.Parent:WaitForChild("Camera")) -- (NOVO) para o tranco na tela (Camera.tremer)
 local Tela = require(ReplicatedStorage:WaitForChild("Compartilhado"):WaitForChild("Tela")) -- (NOVO) HUD menor no celular
 type Quadriciclo = Veiculo.Quadriciclo
@@ -1999,11 +2000,10 @@ function Gancho.ligar(quad: Quadriciclo)
 	filtroSemAgua = criarFiltro(quad, true)
 	filtroEscalada = criarFiltro(quad, false)
 	-- Controle (L1) e celular (botão GANCHO): segure para mirar, solte para lançar. (O Q saiu.)
-	ContextActionService:BindActionAtPriority(ACAO_GANCHO, function(_nomeAcao: string, estado: Enum.UserInputState, _entrada: InputObject): Enum.ContextActionResult?
+	BotoesDoCelular.ligar(ACAO_GANCHO, "GANCHO", function(_nomeAcao: string, estado: Enum.UserInputState, _entrada: InputObject): Enum.ContextActionResult?
 		aoGancho(quad, estado)
 		return Enum.ContextActionResult.Sink
-	end, true, Veiculo.PRIORIDADE, Enum.KeyCode.ButtonL1)
-	ContextActionService:SetTitle(ACAO_GANCHO, "GANCHO")
+	end, Veiculo.PRIORIDADE, Enum.KeyCode.ButtonL1)
 	-- (NOVO) Mouse: botão DIREITO mira, botão ESQUERDO lança (ou solta o gancho preso).
 	table.insert(conexoesDoMouse, UserInputService.InputBegan:Connect(function(entrada: InputObject, processado: boolean)
 		aoApertarMouse(quad, entrada, processado)
@@ -2042,7 +2042,7 @@ end
 
 -- Levantou: solta o gancho (se estiver preso) e desliga tudo.
 function Gancho.desligar(quad: Quadriciclo)
-	ContextActionService:UnbindAction(ACAO_GANCHO)
+	BotoesDoCelular.desligar(ACAO_GANCHO)
 	ContextActionService:UnbindAction(ACAO_TROCAR_GANCHO)
 	for _, conexao in conexoesDoMouse do
 		conexao:Disconnect() -- (NOVO) para de ouvir os botões do mouse

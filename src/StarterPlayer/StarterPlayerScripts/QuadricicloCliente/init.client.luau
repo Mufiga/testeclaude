@@ -21,7 +21,7 @@
 
 	Cada assunto fica num ModuleScript aqui dentro: Veiculo, Velocimetro,
 	Camera, Nitro, Buzina, FreioDeMao, Ladeira, Gancho, TeclasMenu, BoostPads,
-	Sensacao, Monstro e Pista.
+	Sensacao, Monstro, Pista e BotoesDoCelular.
 	Os valores de ajuste ficam na Configuracao de cada quadriciclo (e na
 	ReplicatedStorage > Compartilhado > ConfiguracaoPadrao).
 
@@ -32,8 +32,8 @@
 	  Controle .. RT acelera · LT freia/ré · analógico esquerdo vira · seta ↓ desvira
 	              R1 nitro · seta ↑ buzina · B freio de mão · Y câmera · L1 gancho · X sai
 	              A super pulo (no caminhão monstro) · a pé, as setas mexem no HUD de veículos
-	  Celular ... botões GÁS, FREIO, GANCHO, NITRO, BUZINA, F. MÃO e CÂMERA
-	              · o analógico da tela vira · o botão de pulo sai do banco
+	  Celular ... botões GÁS, FREIO, GANCHO, NITRO, F. MÃO, BUZINA, CÂMERA, SAIR (e PULO no monstro)
+	              · o analógico da tela vira (o módulo BotoesDoCelular cuida desses botões)
 ]]
 
 -- =====================================================================
@@ -44,8 +44,8 @@ local RunService = game:GetService("RunService")
 local ContextActionService = game:GetService("ContextActionService")
 local CollectionService = game:GetService("CollectionService")
 
--- Antes de tudo, confere se os 13 ModuleScripts estão aqui dentro (com o nome certinho).
-for _, nome in { "Veiculo", "Velocimetro", "Camera", "Nitro", "Buzina", "FreioDeMao", "Ladeira", "Gancho", "TeclasMenu", "BoostPads", "Sensacao", "Monstro", "Pista" } do
+-- Antes de tudo, confere se os 14 ModuleScripts estão aqui dentro (com o nome certinho).
+for _, nome in { "Veiculo", "Velocimetro", "Camera", "Nitro", "Buzina", "FreioDeMao", "Ladeira", "Gancho", "TeclasMenu", "BoostPads", "Sensacao", "Monstro", "Pista", "BotoesDoCelular" } do
 	if script:WaitForChild(nome, 5) == nil then
 		warn(`[Quadriciclo] Falta o ModuleScript "{nome}" dentro do QuadricicloCliente (StarterPlayerScripts).`
 			.. " Confira o nome: maiúsculas e minúsculas contam, e não tem acento.")
@@ -66,6 +66,7 @@ BoostPads.iniciar() -- (NOVO) acha os pads do mapa e liga a animação das setas
 local Sensacao = require(script:WaitForChild("Sensacao")) -- (NOVO) molas, peso, marcas, poeira e câmera mais gostosos
 local Monstro = require(script:WaitForChild("Monstro")) -- (NOVO) super pulo e mortais do caminhão monstro
 local Pista = require(script:WaitForChild("Pista")) -- (NOVO) loops, tubos, rampas e terreno
+local BotoesDoCelular = require(script:WaitForChild("BotoesDoCelular")) -- (NOVO) os botões da tela no celular
 type Quadriciclo = Veiculo.Quadriciclo
 
 -- O Studio trata LocalPlayer como "talvez nil" (no servidor ele não existe).
@@ -147,18 +148,18 @@ local function aoMoverAnalogico(_nomeAcao: string, estado: Enum.UserInputState, 
 	return Enum.ContextActionResult.Pass
 end
 
--- Pedal, volante e desvirar. (O celular só mostra os 7 PRIMEIROS botões criados:
--- a ordem em que os botões são ligados, aqui e em comecarADirigir, decide quem aparece.)
+-- Pedal, volante e desvirar. (No celular, os botões GÁS e FREIO, e ESQ/DIR se MobileSteerButtons = true:
+-- o lugar de cada um fica no módulo BotoesDoCelular.)
 local function ligarControles(quad: Quadriciclo)
 	local Config = quad.Config
 	local PRIORIDADE = Veiculo.PRIORIDADE
-	ContextActionService:BindActionAtPriority(ACAO_ACELERAR, criarManipulador(entradas.Acelerar), true, PRIORIDADE,
+	BotoesDoCelular.ligar(ACAO_ACELERAR, "GAS", criarManipulador(entradas.Acelerar), PRIORIDADE,
 		Enum.KeyCode.W, Enum.KeyCode.Up, Enum.KeyCode.ButtonR2)
-	ContextActionService:BindActionAtPriority(ACAO_FREAR, criarManipulador(entradas.Frear), true, PRIORIDADE,
+	BotoesDoCelular.ligar(ACAO_FREAR, "FREIO", criarManipulador(entradas.Frear), PRIORIDADE, -- segurando, freia e depois dá ré
 		Enum.KeyCode.S, Enum.KeyCode.Down, Enum.KeyCode.ButtonL2)
-	ContextActionService:BindActionAtPriority(ACAO_ESQUERDA, criarManipulador(entradas.Esquerda), Config.MobileSteerButtons, PRIORIDADE,
+	BotoesDoCelular.ligar(ACAO_ESQUERDA, if Config.MobileSteerButtons then "ESQ" else nil, criarManipulador(entradas.Esquerda), PRIORIDADE,
 		Enum.KeyCode.A, Enum.KeyCode.Left)
-	ContextActionService:BindActionAtPriority(ACAO_DIREITA, criarManipulador(entradas.Direita), Config.MobileSteerButtons, PRIORIDADE,
+	BotoesDoCelular.ligar(ACAO_DIREITA, if Config.MobileSteerButtons then "DIR" else nil, criarManipulador(entradas.Direita), PRIORIDADE,
 		Enum.KeyCode.D, Enum.KeyCode.Right)
 	ContextActionService:BindActionAtPriority(ACAO_ANALOGICO, aoMoverAnalogico, false, PRIORIDADE,
 		Enum.KeyCode.Thumbstick1)
@@ -169,31 +170,22 @@ local function ligarControles(quad: Quadriciclo)
 		end
 		return Enum.ContextActionResult.Sink
 	end, false, PRIORIDADE, Enum.KeyCode.R, Enum.KeyCode.DPadDown)
-
-	ContextActionService:SetTitle(ACAO_ACELERAR, "GÁS")
-	ContextActionService:SetTitle(ACAO_FREAR, "FREIO") -- segurando, freia e depois dá ré
-	ContextActionService:SetTitle(ACAO_DESVIRAR, "VIRAR")
-	if Config.MobileSteerButtons then
-		ContextActionService:SetTitle(ACAO_ESQUERDA, "ESQ")
-		ContextActionService:SetTitle(ACAO_DIREITA, "DIR")
-	end
 end
 
 -- E / botão X / botão SAIR: o Servidor desfaz a solda do banco.
 local function ligarSaida(quad: Quadriciclo)
-	ContextActionService:BindActionAtPriority(ACAO_SAIR, function(_nomeAcao: string, estado: Enum.UserInputState, _entrada: InputObject): Enum.ContextActionResult?
+	BotoesDoCelular.ligar(ACAO_SAIR, "SAIR", function(_nomeAcao: string, estado: Enum.UserInputState, _entrada: InputObject): Enum.ContextActionResult?
 		if estado == Enum.UserInputState.Begin then
 			saidaPedida = true
 			Veiculo.avisarServidor(quad, "Sair", true)
 		end
 		return Enum.ContextActionResult.Sink
-	end, true, Veiculo.PRIORIDADE, Enum.KeyCode.E, Enum.KeyCode.ButtonX)
-	ContextActionService:SetTitle(ACAO_SAIR, "SAIR")
+	end, Veiculo.PRIORIDADE, Enum.KeyCode.E, Enum.KeyCode.ButtonX)
 end
 
 local function desligarControles()
 	for _, nome in TODAS_AS_ACOES do
-		ContextActionService:UnbindAction(nome)
+		BotoesDoCelular.desligar(nome) -- (a tecla, o botão do controle e o botão da tela)
 	end
 	for _, tabela in entradas do
 		table.clear(tabela)
@@ -552,8 +544,6 @@ local function comecarADirigir(quad: Quadriciclo)
 	quad.dirigindo = true
 	saidaPedida = false
 	velocidadeAlvo = quad.chassi.AssemblyLinearVelocity:Dot(Veiculo.referencia(quad).LookVector)
-	-- A ORDEM importa no celular (só os 7 primeiros botões aparecem):
-	-- GÁS, FREIO, GANCHO, NITRO, BUZINA, F. MÃO, CÂMERA (e SAIR, que fica de fora; lá o pulo sai do banco).
 	ligarControles(quad)
 	Gancho.ligar(quad)
 	Nitro.ligar(quad)
@@ -561,6 +551,7 @@ local function comecarADirigir(quad: Quadriciclo)
 	FreioDeMao.ligar(quad)
 	Camera.ligar(quad)
 	ligarSaida(quad)
+	BotoesDoCelular.dirigindo(true) -- (NOVO) no celular: aparecem os botões e some o pulo do Roblox
 	Velocimetro.ligar(quad)
 	TeclasMenu.ligar(quad)
 	ligarPancada(quad) -- (CORRIGIDO) passa a ouvir as pancadas que você levar: UMA vez, ao sentar
@@ -599,6 +590,7 @@ local function pararDeDirigir()
 	Sensacao.desligar()
 	Monstro.desligar()
 	Pista.desligar()
+	BotoesDoCelular.dirigindo(false) -- (NOVO) os botões somem e o pulo volta (antes do pulo aqui embaixo)
 	velocidadeAlvo = 0
 	if saidaPedida then -- saiu pelo E: dá o pulo para fora do quadriciclo
 		saidaPedida = false

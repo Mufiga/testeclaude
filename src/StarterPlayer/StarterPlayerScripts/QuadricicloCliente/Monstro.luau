@@ -21,12 +21,12 @@
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local ContextActionService = game:GetService("ContextActionService")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Veiculo = require(script.Parent:WaitForChild("Veiculo")) -- (a "frente" e o "cima" do veículo)
 local CameraModulo = require(script.Parent:WaitForChild("Camera")) -- (o tranco na tela: Camera.tremer)
+local BotoesDoCelular = require(script.Parent:WaitForChild("BotoesDoCelular")) -- (o botão PULO na tela do celular)
 local Tela = require(ReplicatedStorage:WaitForChild("Compartilhado"):WaitForChild("Tela")) -- (no celular, textos e barra menores)
 
 local Monstro = {}
@@ -440,10 +440,9 @@ local function ligar(quad: any): Estado?
 		zoomAntes = jogador.CameraMinZoomDistance
 		jogador.CameraMinZoomDistance = math.max(ZOOM_MINIMO, jogador.CameraMinZoomDistance)
 	end
-	-- o botão do pulo (no celular aparece um botão na tela)
+	-- o botão do pulo (no celular aparece o botão PULO na tela)
 	-- (prioridade alta, igual às outras teclas do veículo: assim o A não vira o "pulo para fora do banco")
-	ContextActionService:BindActionAtPriority("MonstroPulo", acaoDoPulo, true, Veiculo.PRIORIDADE, TECLA_DO_PULO, BOTAO_DO_CONTROLE)
-	ContextActionService:SetTitle("MonstroPulo", "PULO")
+	BotoesDoCelular.ligar("MonstroPulo", "PULO", acaoDoPulo, Veiculo.PRIORIDADE, TECLA_DO_PULO, BOTAO_DO_CONTROLE)
 	local barra, enchimento = criarBarra()
 	return {
 		quad = quad,
@@ -483,7 +482,7 @@ local function desligar()
 	if atual == nil then
 		return
 	end
-	ContextActionService:UnbindAction("MonstroPulo")
+	BotoesDoCelular.desligar("MonstroPulo")
 	atual.forca:Destroy()
 	atual.anexoDaForca:Destroy()
 	local barra = atual.barra

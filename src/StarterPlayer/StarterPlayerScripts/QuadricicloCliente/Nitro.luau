@@ -13,10 +13,10 @@
 	Quem decide se o nitro está funcionando é o "atualizar" do QuadricicloCliente.
 ]]
 
-local ContextActionService = game:GetService("ContextActionService")
 
 
 local Veiculo = require(script.Parent:WaitForChild("Veiculo"))
+local BotoesDoCelular = require(script.Parent:WaitForChild("BotoesDoCelular")) -- (NOVO) os botões da tela no celular
 type Quadriciclo = Veiculo.Quadriciclo
 
 local Nitro = {}
@@ -194,16 +194,15 @@ end
 
 -- Sentou: liga a tecla do nitro. (A câmera que "abre" no nitro agora fica no módulo Camera.)
 function Nitro.ligar(quad: Quadriciclo)
-	ContextActionService:BindActionAtPriority(ACAO_NITRO, function(_nomeAcao: string, estado: Enum.UserInputState, _entrada: InputObject): Enum.ContextActionResult?
+	BotoesDoCelular.ligar(ACAO_NITRO, "NITRO", function(_nomeAcao: string, estado: Enum.UserInputState, _entrada: InputObject): Enum.ContextActionResult?
 		quad.nitroPedido = Veiculo.segurando(estado)
 		return Enum.ContextActionResult.Sink
-	end, true, Veiculo.PRIORIDADE, Enum.KeyCode.LeftShift, Enum.KeyCode.ButtonR1)
-	ContextActionService:SetTitle(ACAO_NITRO, "NITRO")
+	end, Veiculo.PRIORIDADE, Enum.KeyCode.LeftShift, Enum.KeyCode.ButtonR1)
 end
 
 -- Levantou: solta a tecla e apaga o nitro.
 function Nitro.desligar(quad: Quadriciclo)
-	ContextActionService:UnbindAction(ACAO_NITRO)
+	BotoesDoCelular.desligar(ACAO_NITRO)
 	quad.nitroPedido = false
 	if quad.nitroAtivo then
 		Nitro.mudar(quad, false)

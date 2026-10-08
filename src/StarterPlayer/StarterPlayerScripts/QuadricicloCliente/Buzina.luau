@@ -11,9 +11,9 @@
 	botão BUZINA no celular.
 ]]
 
-local ContextActionService = game:GetService("ContextActionService")
 
 local Veiculo = require(script.Parent:WaitForChild("Veiculo"))
+local BotoesDoCelular = require(script.Parent:WaitForChild("BotoesDoCelular")) -- (NOVO) os botões da tela no celular
 type Quadriciclo = Veiculo.Quadriciclo
 
 local Buzina = {}
@@ -43,7 +43,7 @@ end
 
 -- Sentou: liga a tecla da buzina.
 function Buzina.ligar(quad: Quadriciclo)
-	ContextActionService:BindActionAtPriority(ACAO_BUZINA, function(_nomeAcao: string, estado: Enum.UserInputState, _entrada: InputObject): Enum.ContextActionResult?
+	BotoesDoCelular.ligar(ACAO_BUZINA, "BUZINA", function(_nomeAcao: string, estado: Enum.UserInputState, _entrada: InputObject): Enum.ContextActionResult?
 		local ligada = Veiculo.segurando(estado)
 		if ligada ~= quad.buzinaLigada then
 			quad.buzinaLigada = ligada
@@ -51,13 +51,12 @@ function Buzina.ligar(quad: Quadriciclo)
 			Veiculo.avisarServidor(quad, "Buzina", ligada) -- ...e os outros também
 		end
 		return Enum.ContextActionResult.Sink
-	end, true, Veiculo.PRIORIDADE, Enum.KeyCode.H, Enum.KeyCode.DPadUp)
-	ContextActionService:SetTitle(ACAO_BUZINA, "BUZINA")
+	end, Veiculo.PRIORIDADE, Enum.KeyCode.H, Enum.KeyCode.DPadUp)
 end
 
 -- Levantou: para a buzina.
 function Buzina.desligar(quad: Quadriciclo)
-	ContextActionService:UnbindAction(ACAO_BUZINA)
+	BotoesDoCelular.desligar(ACAO_BUZINA)
 	if quad.buzinaLigada then
 		quad.buzinaLigada = false
 		quad.tocarBuzina(false)

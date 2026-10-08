@@ -14,9 +14,9 @@
 	(Quem TRAVA as rodas é o "atualizar" do QuadricicloCliente.)
 ]]
 
-local ContextActionService = game:GetService("ContextActionService")
 
 local Veiculo = require(script.Parent:WaitForChild("Veiculo"))
+local BotoesDoCelular = require(script.Parent:WaitForChild("BotoesDoCelular")) -- (NOVO) os botões da tela no celular
 type Quadriciclo = Veiculo.Quadriciclo
 
 local FreioDeMao = {}
@@ -363,16 +363,15 @@ function FreioDeMao.ligar(quad: Quadriciclo)
 	filtro.IgnoreWater = true
 	filtroDoChao = filtro
 	ultimoChaoDerrapando = 0
-	ContextActionService:BindActionAtPriority(ACAO_FREIO_DE_MAO, function(_nomeAcao: string, estado: Enum.UserInputState, _entrada: InputObject): Enum.ContextActionResult?
+	BotoesDoCelular.ligar(ACAO_FREIO_DE_MAO, "FREIO_DE_MAO", function(_nomeAcao: string, estado: Enum.UserInputState, _entrada: InputObject): Enum.ContextActionResult?
 		quad.freioDeMao = Veiculo.segurando(estado)
 		return Enum.ContextActionResult.Sink
-	end, true, Veiculo.PRIORIDADE, Enum.KeyCode.Space, Enum.KeyCode.ButtonB)
-	ContextActionService:SetTitle(ACAO_FREIO_DE_MAO, "F. MÃO")
+	end, Veiculo.PRIORIDADE, Enum.KeyCode.Space, Enum.KeyCode.ButtonB)
 end
 
 -- Levantou: tudo volta ao normal.
 function FreioDeMao.desligar(quad: Quadriciclo)
-	ContextActionService:UnbindAction(ACAO_FREIO_DE_MAO)
+	BotoesDoCelular.desligar(ACAO_FREIO_DE_MAO)
 	quad.freioDeMao = false
 	aplicarAtrito(quad, quad.Config.TireFriction, quad.Config.TireFriction) -- (NOVO) todas as rodas com o atrito normal
 	atritoTravadas, atritoSoltas = -1, -1 -- (o próximo quadriciclo começa do normal dele)

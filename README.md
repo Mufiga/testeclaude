@@ -9,9 +9,49 @@ colocar no seu jogo**.
 
 ---
 
+## Atualização 2: botões do celular
+
+Os botões de toque de antes (GÁS, FREIO, NITRO...) eram os **automáticos do Roblox**: ficavam amontoados
+em cima do botão de pulo, o texto não cabia ("BUZIN A") e o Roblox mostra **no máximo 7**, então o
+**SAIR** e o **PULO** do caminhão monstro nem apareciam. Agora os botões são **nossos**:
+
+- Cada botão tem o seu lugar, tamanho e cor, no canto de baixo à direita: o **GÁS** é o maior e fica no
+  canto; **FREIO**, **GANCHO** e **NITRO** em volta dele; **F. MÃO** e **PULO** (só no caminhão monstro)
+  mais para a esquerda; **SAIR**, **BUZINA** e **CÂMERA** menores, em cima (longe do GÁS, para ninguém
+  sair do veículo sem querer).
+- Se o dedo escorregar para fora do botão, ele **continua apertado** até você tirar o dedo da tela.
+- **Dirigindo, o botão de pulo do Roblox some** (ele tirava você do veículo sem querer, colado no GÁS).
+  Para sair, use o botão **SAIR**. Quando você sai do veículo, o pulo volta.
+- Os botões encolhem junto com os outros HUDs (módulo `Tela`).
+- Teclado e controle continuam **exatamente iguais**.
+
+**Passo a passo no Studio** (depois da *Atualização: celular e controle*, logo abaixo):
+
+1. Em **StarterPlayer › StarterPlayerScripts › QuadricicloCliente**, **crie** um ModuleScript:
+   - `BotoesDoCelular` ← [BotoesDoCelular.luau](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/BotoesDoCelular.luau)
+2. **Substitua** (apague tudo e cole o novo), todos dentro de StarterPlayerScripts:
+   - `QuadricicloCliente` (o LocalScript) ← [init.client.luau](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/init.client.luau)
+   - QuadricicloCliente › `Buzina` ← [Buzina.luau](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Buzina.luau)
+   - QuadricicloCliente › `Camera` ← [Camera.luau](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Camera.luau)
+   - QuadricicloCliente › `FreioDeMao` ← [FreioDeMao.luau](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/FreioDeMao.luau)
+   - QuadricicloCliente › `Gancho` ← [Gancho.luau](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Gancho.luau)
+   - QuadricicloCliente › `Monstro` ← [Monstro.luau](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Monstro.luau)
+   - QuadricicloCliente › `Nitro` ← [Nitro.luau](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Nitro.luau)
+3. **Teste:** *Test › Device*, escolha um celular **deitado** e dê Play. Sente no quadriciclo e no
+   caminhão monstro: os botões aparecem organizados, o botão de pulo do Roblox some, e o SAIR tira você
+   do veículo. Confira também se nenhum botão ficou em cima de algo do seu **HUDQuadriciclo** (o
+   velocímetro do StarterGui): se ficou, mude o HUD de lugar ou mexa nos botões (abaixo).
+
+**Quer mudar um botão de lugar, de tamanho ou de cor?** No começo do `BotoesDoCelular` tem a tabela
+`BOTOES`: `x` e `y` são o centro do botão, `tamanho` é a largura. Todos ficam num quadro de 330 × 300
+no canto de baixo à direita (no celular, tudo encolhe junto).
+
+---
+
 ## Atualização: celular e controle
 
-Se você **já colocou** a primeira versão no seu jogo, só precisa fazer o que está nesta seção.
+Se você **já colocou** a primeira versão no seu jogo, só precisa fazer o que está nesta seção (e depois a
+**Atualização 2**, acima).
 
 **O que muda:**
 - **HUD menor no celular.** Os HUDs (velocímetro, barra do gancho, barra do super pulo, os textos
@@ -60,9 +100,8 @@ Se você **já colocou** a primeira versão no seu jogo, só precisa fazer o que
 **Quer o analógico parado também andando a pé?** No Studio: **StarterPlayer** › Propriedades ›
 `DevTouchMovementMode` = **Thumbstick**. (Os scripts só mudam isso enquanto a pessoa dirige.)
 
-> **Atenção (celular):** o Roblox mostra no máximo **7 botões de toque** de ações. Dirigindo já temos
-> 7 (Gás, Freio, Gancho, Nitro, Buzina, Freio de mão, Câmera), então o botão **PULO** do caminhão
-> monstro **não aparece no celular**. Se quiser, eu faço um botão próprio de super pulo para o celular.
+> **Celular:** os botões automáticos do Roblox (no máximo 7, e sem o PULO do caminhão monstro) foram
+> trocados por botões próprios na **Atualização 2**, logo acima.
 
 ---
 
