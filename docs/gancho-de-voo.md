@@ -1,5 +1,7 @@
 # Gancho de voo (gancho 2 · SEGURAR + tag `Voar_Gancho`)
 
+> **Atualização:** depois deste guia, aplique também o `gancho-de-voo-v2.md` (pêndulo com corda curta, mínimo de 30 studs, carro mais solto).
+
 Diagnóstico, solução, código, configuração e testes. Todo o código abaixo foi aplicado numa cópia dos
 scripts que você mandou e passou no verificador de tipos do Luau em modo `--!strict`, com as definições da
 API do Roblox: **0 erros, 0 avisos**. Os módulos que você não mandou (`Camera`, `Tela`, `BotoesDoCelular`,
