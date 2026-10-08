@@ -21,7 +21,7 @@
 
 	Cada assunto fica num ModuleScript aqui dentro: Veiculo, Velocimetro,
 	Camera, Nitro, Buzina, FreioDeMao, Ladeira, Gancho, TeclasMenu, BoostPads,
-	Sensacao, Monstro, Pista, BotoesDoCelular e PoeiraDoChao.
+	Sensacao, Monstro, Pista, BotoesDoCelular, PoeiraDoChao e Guidao.
 	Os valores de ajuste ficam na Configuracao de cada quadriciclo (e na
 	ReplicatedStorage > Compartilhado > ConfiguracaoPadrao).
 
@@ -44,8 +44,8 @@ local RunService = game:GetService("RunService")
 local ContextActionService = game:GetService("ContextActionService")
 local CollectionService = game:GetService("CollectionService")
 
--- Antes de tudo, confere se os 15 ModuleScripts estão aqui dentro (com o nome certinho).
-for _, nome in { "Veiculo", "Velocimetro", "Camera", "Nitro", "Buzina", "FreioDeMao", "Ladeira", "Gancho", "TeclasMenu", "BoostPads", "Sensacao", "Monstro", "Pista", "BotoesDoCelular", "PoeiraDoChao" } do
+-- Antes de tudo, confere se os 16 ModuleScripts estão aqui dentro (com o nome certinho).
+for _, nome in { "Veiculo", "Velocimetro", "Camera", "Nitro", "Buzina", "FreioDeMao", "Ladeira", "Gancho", "TeclasMenu", "BoostPads", "Sensacao", "Monstro", "Pista", "BotoesDoCelular", "PoeiraDoChao", "Guidao" } do
 	if script:WaitForChild(nome, 5) == nil then
 		warn(`[Quadriciclo] Falta o ModuleScript "{nome}" dentro do QuadricicloCliente (StarterPlayerScripts).`
 			.. " Confira o nome: maiúsculas e minúsculas contam, e não tem acento.")
@@ -68,6 +68,7 @@ local Monstro = require(script:WaitForChild("Monstro")) -- (NOVO) super pulo e m
 local Pista = require(script:WaitForChild("Pista")) -- (NOVO) loops, tubos, rampas e terreno
 local BotoesDoCelular = require(script:WaitForChild("BotoesDoCelular")) -- (NOVO) os botões da tela no celular
 local PoeiraDoChao = require(script:WaitForChild("PoeiraDoChao")) -- (NOVO) as rodas jogam o chão (da cor dele)
+local Guidao = require(script:WaitForChild("Guidao")) -- (NOVO) o guidão/volante gira e o piloto segura nele
 type Quadriciclo = Veiculo.Quadriciclo
 
 -- O Studio trata LocalPlayer como "talvez nil" (no servidor ele não existe).
@@ -658,6 +659,7 @@ local function adotar(modelo: Model)
 	Buzina.criarEfeitos(quad)
 	FreioDeMao.criarEfeitos(quad)
 	Gancho.criarVisual(quad)
+	Guidao.criar(quad) -- (NOVO) guidão/volante que gira, com as mãos de quem dirige (todo mundo vê)
 	Veiculo.guardarConexao(quad, quad.assento:GetPropertyChangedSignal("Occupant"):Connect(function()
 		conferirMotorista(quad)
 	end))

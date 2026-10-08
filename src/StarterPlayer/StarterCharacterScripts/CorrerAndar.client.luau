@@ -7,6 +7,7 @@
 
 	A PÉ, o personagem ANDA (animação de andar, mais devagar) e, segurando o SHIFT, CORRE (animação de
 	correr, mais rápido). A troca é suave: a velocidade vai subindo e a animação acompanha os pés.
+	E o PULO tem outra animação (ANIMACAO_PULAR nos AJUSTES).
 	  - Computador ... segure SHIFT para correr.
 	  - Controle ..... aperte o analógico esquerdo (L3) para correr. Parou de andar, volta a andar.
 	  - Celular ...... botão CORRER (em cima do botão de pulo): liga e desliga. Parou, desliga sozinho.
@@ -23,6 +24,7 @@ local UserInputService = game:GetService("UserInputService")
 local ContextActionService = game:GetService("ContextActionService")
 local GuiService = game:GetService("GuiService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ContentProvider = game:GetService("ContentProvider")
 
 -- (o mesmo módulo dos HUDs: diz se o jogador está jogando pelo toque)
 local Tela = require(ReplicatedStorage:WaitForChild("Compartilhado"):WaitForChild("Tela"))
@@ -39,6 +41,10 @@ local PARADO_DESLIGA = 0.6 -- (s) no controle e no celular: parado esse tempo, o
 -- animação precisa ser sua, do seu grupo ou do Roblox (senão o Roblox não deixa tocar).
 local ANIMACAO_ANDAR = ""
 local ANIMACAO_CORRER = ""
+-- O PULO (só R15). "" = o pulo de sempre. O padrão aqui é o pulo do pacote "Ninja" do Roblox: troque
+-- por outro, se quiser. A de CAIR é a que vem logo depois do pulo, descendo ("" = a de sempre).
+local ANIMACAO_PULAR = "rbxassetid://656117878"
+local ANIMACAO_CAIR = ""
 -- O "ritmo" = em que velocidade (studs/s) os pés da animação acompanham o chão. Andando mais rápido,
 -- a animação acelera na mesma proporção (assim os pés não escorregam). Animação sua com os pés
 -- escorregando? Mude o ritmo dela até encaixar.
@@ -69,6 +75,40 @@ local function animacaoDoPersonagem(nome: string): Animation?
 end
 local andarDoPersonagem = animacaoDoPersonagem("walk")
 local correrDoPersonagem = if ehR6 then nil else animacaoDoPersonagem("run")
+
+-- O PULO: troca a animação de pular (e a de cair) dentro do "Animate" do Roblox. Ele mesmo toca na hora
+-- certa (pulou: pulo; descendo: caindo). Só troca se a animação nova CARREGAR (ID errado = fica a de
+-- antes, com um aviso no Output).
+local function trocarNoAnimate(nome: string, id: string)
+	if id == "" or ehR6 then
+		return
+	end
+	local animacao = animacaoDoPersonagem(nome)
+	if animacao == nil then
+		return
+	end
+	local teste = Instance.new("Animation")
+	teste.AnimationId = id
+	task.spawn(function()
+		local carregou = false
+		ContentProvider:PreloadAsync({ teste }, function(_id: string, situacao: Enum.AssetFetchStatus)
+			carregou = situacao == Enum.AssetFetchStatus.Success
+		end)
+		if not carregou then
+			warn(`[CorrerAndar] A animação "{id}" ({nome}) não carregou. Confira o ID: ela precisa ser sua, do seu grupo ou do Roblox.`)
+			return
+		end
+		animacao.AnimationId = id
+		-- (se o Roblox trocar de volta depois, por exemplo o pacote do jogador chegando, troca de novo)
+		animacao:GetPropertyChangedSignal("AnimationId"):Connect(function()
+			if animacao.AnimationId ~= id then
+				animacao.AnimationId = id
+			end
+		end)
+	end)
+end
+trocarNoAnimate("jump", ANIMACAO_PULAR)
+trocarNoAnimate("fall", ANIMACAO_CAIR)
 
 local trilhaAndar: AnimationTrack? = nil
 local trilhaCorrer: AnimationTrack? = nil
