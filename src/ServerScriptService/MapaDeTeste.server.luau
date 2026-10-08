@@ -93,7 +93,7 @@ local base = CFrame.new(origem) -- tudo daqui para baixo é contado a partir do 
 do
 	local filtro = OverlapParams.new()
 	filtro.FilterType = Enum.RaycastFilterType.Exclude
-	filtro.FilterDescendantsInstances = { workspace.Terrain }
+	filtro.FilterDescendantsInstances = { workspace.Terrain :: Terrain }
 	local achadas = workspace:GetPartBoundsInBox(base * CFrame.new(0, 40, 0), Vector3.new(LARGURA + 40, 120, COMPRIMENTO + 40), filtro)
 	if #achadas > 0 then
 		warn(`[MapaDeTeste] Tem peças do seu mapa no lugar do mapa de teste (ex.: "{achadas[1]:GetFullName()}"). Mude CENTRO_X e CENTRO_Z nos AJUSTES.`)
@@ -128,7 +128,7 @@ local COR = {
 -- =====================================================================
 local pasta = Instance.new("Folder") -- tudo do mapa fica aqui dentro (vai para o Workspace no fim)
 pasta.Name = "MapaDeTeste"
-local terreno = workspace.Terrain
+local terreno = workspace.Terrain :: Terrain -- (o "::" só confirma para o Studio que o Terrain existe: no Workspace, ele sempre existe)
 
 -- Uma Part ancorada. "onde" é contado a partir do meio do mapa (o chão fica em Y = 0).
 local function peca(nome: string, tamanho: Vector3, onde: CFrame, material: Enum.Material, cor: Color3, pai: Instance?): Part
