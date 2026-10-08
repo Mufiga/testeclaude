@@ -466,19 +466,31 @@ E, logo depois de `esquecerMeuGancho() -- (por garantia: nenhuma corda velha sob
 		impulsoDoVooPendente = if pontoVoo then true else false -- (NOVO) ...então ele dá o lançamento (uma vez só)
 ```
 
-**3.14** Na `aoGancho` (controle e celular), troque a linha `elseif recargaRestante(tipoSelecionado) > 0 then` por:
+**3.14** Na `aoGancho` (controle e celular), localize estas 3 linhas:
+```lua
+		elseif recargaRestante(tipoSelecionado) > 0 then
+			avisarRecarga(quad, tipoSelecionado)
+		elseif dentroDeZona(quad, tipoSelecionado) then
+```
+e troque as 3 por:
 ```lua
 		elseif recargaRestante(tipoSelecionado) > 0 and tipoSelecionado ~= "Segurar" then -- (NOVO) o SEGURAR mira mesmo recarregando (pode ser um ponto de voo)
 			avisarRecarga(quad, tipoSelecionado)
 		elseif dentroDeZona(quad, tipoSelecionado) then
 ```
-(As outras linhas do trecho continuam iguais.)
+(Só a 1ª linha muda; a 2ª e a 3ª ficam iguais. Não duplique o `elseif dentroDeZona`.)
 
-**3.15** Na `aoApertarMouse`, troque a linha `if recargaRestante(tipoSelecionado) > 0 then` (a do botão DIREITO) por:
+**3.15** Na `aoApertarMouse`, no ramo do botão DIREITO, localize estas 2 linhas:
+```lua
+		if recargaRestante(tipoSelecionado) > 0 then
+			avisarRecarga(quad, tipoSelecionado) -- avisa que este gancho ainda está recarregando
+```
+e troque as 2 por:
 ```lua
 		if recargaRestante(tipoSelecionado) > 0 and tipoSelecionado ~= "Segurar" then -- (NOVO) o SEGURAR pode mirar um ponto de voo
 			avisarRecarga(quad, tipoSelecionado) -- avisa que este gancho ainda está recarregando
 ```
+(Só a 1ª linha muda. Não duplique o `avisarRecarga`.)
 E, no ramo do botão ESQUERDO, localize:
 ```lua
 		if enviadoEm ~= nil then
