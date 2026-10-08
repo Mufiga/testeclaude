@@ -16,12 +16,11 @@
 	  POUSO PERFEITO .. caiu numa DESCIDA do jeitinho dela (rodas retinhas e sem "pancada")?
 	                    "POUSO PERFEITO!" + turbo. Pulos bem longos mostram o tempo no ar.
 	  PANCADA ......... caiu com muita força? Sai uma onda de poeira em volta (da cor do chão).
-	  TERRA VOANDO .... as rodas jogam terra para trás: grama, terra, lama, areia, neve, pedra e água,
-	                    cada uma com a sua cor.
 	  MARCAS .......... na grama, na terra, na lama, na areia e na neve ficam as marcas dos pneus.
 	  ATOLAR .......... areia, lama, neve e água seguram um pouquinho (lama segura mais).
 	As pistas com as tags são feitas pelo arquivo 42 (ConstruirPista). Você também pode colocar as tags
 	nas suas próprias peças (Properties > Tags).
+	(A TERRA VOANDO das rodas agora é do módulo PoeiraDoChao, que vale para os dois veículos.)
 	O QuadricicloCliente chama Pista.atualizar(quad, dt) a cada frame. Saiu do banco? Tudo desliga sozinho.
 ]]
 
@@ -34,6 +33,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Veiculo = require(script.Parent:WaitForChild("Veiculo")) -- (a "frente" e o "cima" do veículo)
 local CameraModulo = require(script.Parent:WaitForChild("Camera")) -- (o tranco na tela: Camera.tremer)
 local Tela = require(ReplicatedStorage:WaitForChild("Compartilhado"):WaitForChild("Tela")) -- (no celular, textos menores)
+local PoeiraDoChao = require(script.Parent:WaitForChild("PoeiraDoChao")) -- (a cor da poeira de cada chão)
 
 local Pista = {}
 
@@ -58,7 +58,6 @@ local POUSO_SUAVE_GRAUS = 25 -- (graus) o quanto a queda pode "bater" no chão (
 local TURBO_DO_POUSO = 20 -- (studs/s) o empurrão do pouso perfeito
 local PANCADA_FORTE = 45 -- (studs/s) caindo contra o chão mais rápido que isso, sai a onda de poeira
 -- terreno
-local TERRA_VOANDO = true
 local MARCAS_NA_TERRA = true
 local DURACAO_DAS_MARCAS = 6 -- (s)
 local TERRENO_SEGURA = true -- areia, lama, neve e água seguram um pouquinho
@@ -67,19 +66,17 @@ local TERRENO_SEGURA = true -- areia, lama, neve e água seguram um pouquinho
 -- OS TIPOS DE CHÃO
 -- =====================================================================
 type TipoDeChao = {
-	terra: ColorSequence, -- a cor da terra que voa
-	quantidade: number, -- quanta terra voa (1 = normal)
 	marca: Color3?, -- a cor da marca do pneu (nil = não deixa marca)
 	segura: number, -- quanto segura (por segundo): 0 = nada
 }
 local CHAOS: { [string]: TipoDeChao } = {
-	Grama = { terra = ColorSequence.new(Color3.fromRGB(95, 140, 55), Color3.fromRGB(110, 80, 50)), quantidade = 1, marca = Color3.fromRGB(70, 85, 45), segura = 0 },
-	Terra = { terra = ColorSequence.new(Color3.fromRGB(125, 92, 60), Color3.fromRGB(95, 70, 45)), quantidade = 1.2, marca = Color3.fromRGB(80, 60, 40), segura = 0 },
-	Lama = { terra = ColorSequence.new(Color3.fromRGB(85, 62, 40), Color3.fromRGB(60, 45, 30)), quantidade = 1.5, marca = Color3.fromRGB(50, 38, 25), segura = 0.35 },
-	Areia = { terra = ColorSequence.new(Color3.fromRGB(225, 205, 155), Color3.fromRGB(200, 180, 130)), quantidade = 1.4, marca = Color3.fromRGB(175, 150, 105), segura = 0.15 },
-	Neve = { terra = ColorSequence.new(Color3.fromRGB(250, 252, 255), Color3.fromRGB(215, 225, 240)), quantidade = 1.4, marca = Color3.fromRGB(170, 185, 210), segura = 0.12 },
-	Pedra = { terra = ColorSequence.new(Color3.fromRGB(175, 175, 175), Color3.fromRGB(140, 140, 140)), quantidade = 0.4, marca = nil, segura = 0 },
-	Agua = { terra = ColorSequence.new(Color3.fromRGB(220, 240, 255), Color3.fromRGB(150, 200, 240)), quantidade = 2, marca = nil, segura = 0.2 },
+	Grama = { marca = Color3.fromRGB(70, 85, 45), segura = 0 },
+	Terra = { marca = Color3.fromRGB(80, 60, 40), segura = 0 },
+	Lama = { marca = Color3.fromRGB(50, 38, 25), segura = 0.35 },
+	Areia = { marca = Color3.fromRGB(175, 150, 105), segura = 0.15 },
+	Neve = { marca = Color3.fromRGB(170, 185, 210), segura = 0.12 },
+	Pedra = { marca = nil, segura = 0 },
+	Agua = { marca = nil, segura = 0.2 },
 }
 -- Que tipo de chão é cada material (os que não estão aqui, como o plástico das pistas, ficam limpinhos)
 local MATERIAL_PARA_CHAO: { [Enum.Material]: string } = {
@@ -101,8 +98,6 @@ local MATERIAL_PARA_CHAO: { [Enum.Material]: string } = {
 	[Enum.Material.Concrete] = "Pedra",
 	[Enum.Material.Water] = "Agua",
 }
--- a cor da onda de poeira quando o chão não é de nenhum tipo (pistas, peças...)
-local POEIRA_PADRAO = ColorSequence.new(Color3.fromRGB(195, 180, 155), Color3.fromRGB(150, 135, 115))
 
 -- =====================================================================
 -- O QUE O MÓDULO GUARDA
@@ -111,13 +106,10 @@ type Roda = {
 	roda: BasePart,
 	raio: number,
 	largura: number,
-	ponto: Attachment, -- (solto no mundo) de onde a terra voa
-	terra: ParticleEmitter,
 	bordaA: Attachment, -- as 2 beiradas da marca do pneu
 	bordaB: Attachment,
 	marca: Trail,
 	chao: string?, -- o tipo de chão embaixo dela agora (nil = nenhum dos tipos, ou no ar)
-	corDaTerra: string?, -- de que chão é a cor que a terra voando está agora (só troca quando muda)
 	corDaMarca: string?, -- de que chão é a cor da marca agora (só troca quando muda)
 }
 -- Um "bloco" = um grupo de peças soldadas que se mexe junto (o chassi, cada manga, cada roda...)
@@ -341,7 +333,7 @@ local function ligar(quad: any): Estado?
 		end
 	end
 
-	-- 2) AS RODAS: a terra voando e as marcas (os pontos ficam soltos no mundo e andam junto com a roda)
+	-- 2) AS RODAS: as marcas (os pontos ficam soltos no mundo e andam junto com a roda)
 	local rodas: { Roda } = {}
 	local function pontoSolto(nome: string): Attachment
 		local anexo = Instance.new("Attachment")
@@ -354,26 +346,6 @@ local function ligar(quad: any): Estado?
 		for _, info in quad.rodas do
 			local roda = comoInstancia(info.roda)
 			if roda and roda:IsA("BasePart") then
-				local ponto = pontoSolto("PistaTerra")
-				local terra = Instance.new("ParticleEmitter")
-				terra.Name = "PistaTerra"
-				terra.Texture = "rbxasset://textures/particles/smoke_main.dds"
-				terra.LightInfluence = 0.7
-				terra.Size = NumberSequence.new({
-					NumberSequenceKeypoint.new(0, 0.6),
-					NumberSequenceKeypoint.new(0.4, 1.4),
-					NumberSequenceKeypoint.new(1, 0.4),
-				})
-				terra.Transparency = NumberSequence.new(0.1, 1)
-				terra.Lifetime = NumberRange.new(0.4, 0.8)
-				terra.Speed = NumberRange.new(12, 22)
-				terra.SpreadAngle = Vector2.new(22, 22)
-				terra.Acceleration = Vector3.new(0, -70, 0) -- cai de volta (parece terra, não fumaça)
-				terra.Drag = 1
-				terra.Rotation = NumberRange.new(0, 360)
-				terra.EmissionDirection = Enum.NormalId.Front
-				terra.Rate = 0
-				terra.Parent = ponto
 				local bordaA = pontoSolto("PistaMarcaA")
 				local bordaB = pontoSolto("PistaMarcaB")
 				local marca = Instance.new("Trail")
@@ -397,13 +369,10 @@ local function ligar(quad: any): Estado?
 					roda = roda,
 					raio = if typeof(info.raio) == "number" then info.raio else medidas[2] / 2,
 					largura = medidas[1],
-					ponto = ponto,
-					terra = terra,
 					bordaA = bordaA,
 					bordaB = bordaB,
 					marca = marca,
 					chao = nil,
-					corDaTerra = nil,
 					corDaMarca = nil,
 				})
 			end
@@ -470,7 +439,6 @@ local function desligar()
 		bloco.forca.Enabled = false
 	end
 	for _, roda in atual.rodas do
-		roda.terra.Rate = 0
 		roda.marca.Enabled = false
 	end
 	-- espera as marcas sumirem e apaga tudo
@@ -520,12 +488,13 @@ function Pista.atualizar(quad: any, dt: number)
 	local somaDosContatos = Vector3.zero
 	local naRampa = false
 	local segura = 0
+	local primeiroAcerto: RaycastResult? = nil -- (o chão de uma das rodas: a cor da onda de poeira)
 	for _, roda in atual.rodas do
 		roda.chao = nil
 		local centro = roda.roda.Position
 		local acerto = workspace:Raycast(centro, -cima * (roda.raio + 1.5), atual.filtro)
-		local ondeSai: RaycastResult? = acerto -- de onde a terra voa
 		if acerto then
+			primeiroAcerto = primeiroAcerto or acerto
 			rodasNoChao += 1
 			somaDasNormais += acerto.Normal
 			somaDosContatos += acerto.Position
@@ -545,21 +514,12 @@ function Pista.atualizar(quad: any, dt: number)
 			roda.bordaA.WorldPosition = contato + lado
 			roda.bordaB.WorldPosition = contato - lado
 		end
-		-- ÁGUA: um segundo raio (que enxerga a água). Na água, a roda joga água (e não deixa marca).
-		if TERRA_VOANDO then
+		-- ÁGUA: um segundo raio (que enxerga a água). Na água, a roda é segurada (e não deixa marca).
+		if TERRENO_SEGURA then
 			local agua = workspace:Raycast(centro + cima * 2, -cima * (roda.raio + 3.5), atual.filtroAgua)
 			if agua and agua.Material == Enum.Material.Water then
 				roda.chao = "Agua"
-				ondeSai = agua
 			end
-		end
-		if ondeSai then
-			-- o ponto da terra fica embaixo da roda, virado para trás (e um pouco para cima)
-			local normal = ondeSai.Normal
-			local paraTras = -(velocidade - normal * velocidade:Dot(normal))
-			local direcao = (if paraTras.Magnitude > 1 then paraTras.Unit else -referencia.LookVector) + normal * 0.7
-			local saida = ondeSai.Position + normal * 0.3
-			roda.ponto.WorldCFrame = CFrame.lookAt(saida, saida + direcao)
 		end
 		local chaoDaRoda = roda.chao
 		if chaoDaRoda then
@@ -647,15 +607,8 @@ function Pista.atualizar(quad: any, dt: number)
 			local vinha = atual.velocidadeNoAr
 			local batida = -vinha:Dot(normalDoChao) -- quão rápido ele vinha CONTRA o chão
 			-- 5a) PANCADA: caiu com muita força? Onda de poeira (da cor do chão)
-			if batida > PANCADA_FORTE then
-				local cor = POEIRA_PADRAO
-				for _, roda in atual.rodas do
-					local chaoDaRoda = roda.chao
-					if chaoDaRoda then
-						cor = CHAOS[chaoDaRoda].terra
-						break
-					end
-				end
+			if batida > PANCADA_FORTE and primeiroAcerto then
+				local cor = PoeiraDoChao.corDaPoeira(primeiroAcerto) -- (a mesma cor da poeira das rodas)
 				ondaDePoeira(somaDosContatos / rodasNoChao, normalDoChao, cor, math.clamp((batida - PANCADA_FORTE) / 60, 0, 1))
 			end
 			-- 5b) POUSO PERFEITO: rodas alinhadas com o chão E chegando "deslizando" (como numa descida)
@@ -681,20 +634,10 @@ function Pista.atualizar(quad: any, dt: number)
 	end
 	atual.rodasNoChaoAntes = rodasNoChao
 
-	-- 6) TERRA VOANDO e MARCAS (cada tipo de chão com a sua cor)
-	local quantoCorre = math.clamp(rapidez / 60, 0, 1)
+	-- 6) MARCAS (cada tipo de chão com a sua cor)
 	for _, roda in atual.rodas do
 		local nomeDoChao = roda.chao
 		local chao = if nomeDoChao then CHAOS[nomeDoChao] else nil
-		if chao and TERRA_VOANDO and rapidez > 6 then
-			if roda.corDaTerra ~= nomeDoChao then -- (a cor só muda quando muda o chão)
-				roda.corDaTerra = nomeDoChao
-				roda.terra.Color = chao.terra
-			end
-			roda.terra.Rate = 40 * chao.quantidade * quantoCorre
-		else
-			roda.terra.Rate = 0
-		end
 		local corDaMarca = if chao then chao.marca else nil
 		local marcar = MARCAS_NA_TERRA and corDaMarca ~= nil and rapidez > 2
 		if marcar and corDaMarca and roda.corDaMarca ~= nomeDoChao then

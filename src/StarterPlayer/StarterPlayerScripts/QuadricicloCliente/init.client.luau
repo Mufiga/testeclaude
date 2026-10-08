@@ -21,7 +21,7 @@
 
 	Cada assunto fica num ModuleScript aqui dentro: Veiculo, Velocimetro,
 	Camera, Nitro, Buzina, FreioDeMao, Ladeira, Gancho, TeclasMenu, BoostPads,
-	Sensacao, Monstro, Pista e BotoesDoCelular.
+	Sensacao, Monstro, Pista, BotoesDoCelular e PoeiraDoChao.
 	Os valores de ajuste ficam na Configuracao de cada quadriciclo (e na
 	ReplicatedStorage > Compartilhado > ConfiguracaoPadrao).
 
@@ -44,8 +44,8 @@ local RunService = game:GetService("RunService")
 local ContextActionService = game:GetService("ContextActionService")
 local CollectionService = game:GetService("CollectionService")
 
--- Antes de tudo, confere se os 14 ModuleScripts estão aqui dentro (com o nome certinho).
-for _, nome in { "Veiculo", "Velocimetro", "Camera", "Nitro", "Buzina", "FreioDeMao", "Ladeira", "Gancho", "TeclasMenu", "BoostPads", "Sensacao", "Monstro", "Pista", "BotoesDoCelular" } do
+-- Antes de tudo, confere se os 15 ModuleScripts estão aqui dentro (com o nome certinho).
+for _, nome in { "Veiculo", "Velocimetro", "Camera", "Nitro", "Buzina", "FreioDeMao", "Ladeira", "Gancho", "TeclasMenu", "BoostPads", "Sensacao", "Monstro", "Pista", "BotoesDoCelular", "PoeiraDoChao" } do
 	if script:WaitForChild(nome, 5) == nil then
 		warn(`[Quadriciclo] Falta o ModuleScript "{nome}" dentro do QuadricicloCliente (StarterPlayerScripts).`
 			.. " Confira o nome: maiúsculas e minúsculas contam, e não tem acento.")
@@ -67,6 +67,7 @@ local Sensacao = require(script:WaitForChild("Sensacao")) -- (NOVO) molas, peso,
 local Monstro = require(script:WaitForChild("Monstro")) -- (NOVO) super pulo e mortais do caminhão monstro
 local Pista = require(script:WaitForChild("Pista")) -- (NOVO) loops, tubos, rampas e terreno
 local BotoesDoCelular = require(script:WaitForChild("BotoesDoCelular")) -- (NOVO) os botões da tela no celular
+local PoeiraDoChao = require(script:WaitForChild("PoeiraDoChao")) -- (NOVO) as rodas jogam o chão (da cor dele)
 type Quadriciclo = Veiculo.Quadriciclo
 
 -- O Studio trata LocalPlayer como "talvez nil" (no servidor ele não existe).
@@ -397,7 +398,7 @@ local function atualizar(quad: Quadriciclo, dt: number)
 	local velocidadeFrente = velocidade:Dot(referencia.LookVector)
 	Veiculo.acompanharTombado(quad, dt) -- conta o tempo de cabeça para baixo (para poder desvirar)
 	acompanharDesvirar(quad) -- (NOVO) desvirou? levanta mais e, ao cair no chão, a tela treme
-	Sensacao.atualizar(quad, dt) -- (NOVO) peso nas molas, marcas de pneu, poeira, câmera e pouso
+	Sensacao.atualizar(quad, dt) -- (NOVO) peso nas molas, marcas de pneu, câmera e pouso
 	-- LADEIRA: descendo, a velocidade máxima vai subindo (até Config.VelocidadeMaximaTotal)
 	local maximaAgora, descida = Ladeira.velocidadeMaximaAgora(quad, referencia, velocidadeFrente, dt)
 
@@ -521,6 +522,9 @@ local function atualizar(quad: Quadriciclo, dt: number)
 	Gancho.atualizarImpulso(quad, pedal, dt, volante) -- gancho de IMPULSO + (NOVO) o volante gira o quadriciclo pendurado
 	Monstro.atualizar(quad, dt, pedal, volante) -- (NOVO) super pulo e mortais (só no caminhão monstro)
 	Pista.atualizar(quad, dt) -- (NOVO) loops, tubos, rampas, pouso perfeito e terreno (só no caminhão monstro)
+	-- (NOVO) as rodas jogam o chão: arrancada, freada, turbo (nitro ou boost pad), derrapagem e pouso.
+	-- (Depois do Nitro.mudar: assim ele já sabe, neste mesmo frame, se o nitro acabou de ligar.)
+	PoeiraDoChao.atualizar(quad, dt, pedal, extraDoBoost > 0)
 	procurarPancada(quad, dt) -- (NOVO) bateu muito rápido em outro quadriciclo? O Servidor manda o tranco nele
 	-- 6) DEBUG (o velocímetro é atualizado pelo módulo Velocimetro)
 	if Config.DEBUG_MODE then
@@ -590,6 +594,7 @@ local function pararDeDirigir()
 	Sensacao.desligar()
 	Monstro.desligar()
 	Pista.desligar()
+	PoeiraDoChao.desligar()
 	BotoesDoCelular.dirigindo(false) -- (NOVO) os botões somem e o pulo volta (antes do pulo aqui embaixo)
 	velocidadeAlvo = 0
 	if saidaPedida then -- saiu pelo E: dá o pulo para fora do quadriciclo

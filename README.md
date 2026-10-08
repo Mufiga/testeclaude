@@ -9,6 +9,79 @@ colocar no seu jogo**.
 
 ---
 
+## Como atualizar o seu jogo (lista completa)
+
+Esta lista está **sempre completa**: tem todos os arquivos que mudaram desde a primeira versão. Troque
+**todos**, mesmo os que você já trocou antes. Trocar de novo não faz mal e garante que nenhum ficou
+antigo. (Para trocar: abra o script, apague tudo e cole o novo. Para criar: botão direito › *Insert
+Object* › o tipo indicado, com o nome **exatamente** igual.)
+
+1. **ReplicatedStorage › Compartilhado**
+   - `ConfiguracaoPadrao` ← [ConfiguracaoPadrao.luau](src/ReplicatedStorage/Compartilhado/ConfiguracaoPadrao.luau)
+   - `Tela` (ModuleScript; **crie** se não existir) ← [Tela.luau](src/ReplicatedStorage/Compartilhado/Tela.luau)
+2. **ServerScriptService › QuadricicloServidor**
+   - `Motorista` ← [Motorista.luau](src/ServerScriptService/QuadricicloServidor/Motorista.luau)
+3. **StarterPlayer › StarterPlayerScripts** (LocalScripts)
+   - `AvisosProgresso` ← [AvisosProgresso.client.luau](src/StarterPlayer/StarterPlayerScripts/AvisosProgresso.client.luau)
+   - `GaragemCliente` ← [GaragemCliente.client.luau](src/StarterPlayer/StarterPlayerScripts/GaragemCliente.client.luau)
+   - `SeletorDeVeiculo` ← [SeletorDeVeiculo.client.luau](src/StarterPlayer/StarterPlayerScripts/SeletorDeVeiculo.client.luau)
+   - `DiagnosticoDaTela` (LocalScript; **crie** se não existir) ← [DiagnosticoDaTela.client.luau](src/StarterPlayer/StarterPlayerScripts/DiagnosticoDaTela.client.luau)
+4. **StarterPlayer › StarterPlayerScripts › QuadricicloCliente**
+   - o próprio LocalScript `QuadricicloCliente` ← [init.client.luau](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/init.client.luau)
+   - `BotoesDoCelular` (ModuleScript; **crie** se não existir) ← [BotoesDoCelular.luau](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/BotoesDoCelular.luau)
+   - `PoeiraDoChao` (ModuleScript; **crie**: é novo) ← [PoeiraDoChao.luau](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/PoeiraDoChao.luau)
+   - [`Buzina`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Buzina.luau) · [`Camera`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Camera.luau) · [`FreioDeMao`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/FreioDeMao.luau) ·
+     [`Gancho`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Gancho.luau) · [`Monstro`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Monstro.luau) · [`Nitro`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Nitro.luau) ·
+     [`Pista`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Pista.luau) · [`Sensacao`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Sensacao.luau) · [`Velocimetro`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Velocimetro.luau)
+
+> O `QuadricicloCliente` confere se os 15 ModuleScripts estão dentro dele. Se faltar um (por exemplo,
+> o `PoeiraDoChao`), o Output avisa em amarelo qual é.
+
+---
+
+## Atualização 4: o chão voando (partículas com a cor do chão)
+
+As rodas agora jogam **pedacinhos e poeira do chão que está embaixo de cada uma**, com a **cor** e o
+**jeito** dele. Vale para o **quadriciclo e para o caminhão monstro** (novo módulo `PoeiraDoChao`).
+
+- **No Terrain:** grama, terra, lama, areia, neve, gelo, pedra, asfalto, água... A cor é a do material
+  no **seu** mapa (a mesma de *Terrain › MaterialColors*). Mudou a cor da grama do mapa? A grama que
+  voa muda junto.
+- **Numa peça:** o jeito vem do **material** dela e a cor é a **cor da peça**. Madeira solta lasquinhas,
+  concreto e asfalto soltam fumaça de pneu, **metal solta faíscas** e plástico, vidro etc. soltam uma
+  poeirinha da cor da peça.
+
+**Quando sai:**
+
+| Momento | O que acontece |
+|---|---|
+| **Acelerando** | As rodas de tração jogam o chão para trás. É mais forte saindo devagar ou com a roda patinando (no asfalto, vira fumaça de pneu). |
+| **Andando no chão solto** | Em terra, areia, neve, lama e água, só de andar já levanta (mais rápido = mais). |
+| **Freando** (ou no freio de mão) | As rodas jogam o chão para a frente. |
+| **Derrapando** | Poeira de lado. |
+| **Turbo** | Ligou o nitro ou passou num boost pad: um **estouro** de chão nas rodas de tração, e mais chão enquanto o turbo dura. |
+| **Pouso** | **Cada roda** que volta a encostar no chão solta um "puf", até num pulinho de **1 stud** numa lombadinha. Quanto mais forte a batida, maior o "puf". |
+
+**O que mudou junto:** a poeira bege do `Sensacao` e a "terra voando" do `Pista` (que era só do caminhão
+monstro) saíram. O `PoeiraDoChao` faz as duas coisas, com a cor do chão, nos dois veículos. A onda de
+poeira das pancadas fortes do caminhão monstro continua, agora com a mesma cor de chão.
+
+**Ajustar** (no começo do `PoeiraDoChao`):
+- `QUANTIDADE`: tudo junto (0.5 = metade, 2 = o dobro, 0 = desliga);
+- `ARRANCADA`, `CHAO_SOLTO`, `FREADA`, `DERRAPANDO`, `TURBO` e `POUSO`: liga e desliga cada momento;
+- `POUSO_BATIDA_MINIMA`: a batida mínima para soltar o "puf" (menor = puf em qualquer quiquezinho);
+- tabela `TIPOS`: a cara de cada tipo de chão (quanto solta, peso, tamanho, poeira, brilho);
+- tabela `MATERIAL_PARA_TIPO`: de que tipo é cada material.
+
+**Testar:** dirija em grama, areia, neve, água e numa peça de metal. Pule de uma lombadinha, ligue o
+nitro e freie forte.
+
+> Só **quem dirige** vê essas partículas (como o resto do `Sensacao`): elas são feitas no computador de
+> quem dirige, sem usar a internet. Se quiser que os outros jogadores vejam o chão voando dos veículos
+> deles também, dá para fazer numa próxima atualização.
+
+---
+
 ## Atualização 3: celular sem nada cortado (+ diagnóstico)
 
 **Por que ainda aparecia coisa cortada no celular:**
@@ -31,25 +104,7 @@ colocar no seu jogo**.
 7. Se os botões que você vê ainda são os **cinzas, redondos e amontoados** (como no seu primeiro print),
    algum script ainda é da versão antiga. O diagnóstico (abaixo) avisa isso no Output.
 
-**Passo a passo no Studio:** troque **todos** estes, mesmo os que você já trocou nas atualizações
-anteriores. Trocar de novo não faz mal e garante que nenhum ficou antigo.
-
-1. **ReplicatedStorage › Compartilhado**
-   - `ConfiguracaoPadrao` ← [ConfiguracaoPadrao.luau](src/ReplicatedStorage/Compartilhado/ConfiguracaoPadrao.luau)
-   - `Tela` (ModuleScript; **crie** se não existir) ← [Tela.luau](src/ReplicatedStorage/Compartilhado/Tela.luau)
-2. **ServerScriptService › QuadricicloServidor**
-   - `Motorista` ← [Motorista.luau](src/ServerScriptService/QuadricicloServidor/Motorista.luau)
-3. **StarterPlayer › StarterPlayerScripts** (LocalScripts)
-   - `AvisosProgresso` ← [AvisosProgresso.client.luau](src/StarterPlayer/StarterPlayerScripts/AvisosProgresso.client.luau)
-   - `GaragemCliente` ← [GaragemCliente.client.luau](src/StarterPlayer/StarterPlayerScripts/GaragemCliente.client.luau)
-   - `SeletorDeVeiculo` ← [SeletorDeVeiculo.client.luau](src/StarterPlayer/StarterPlayerScripts/SeletorDeVeiculo.client.luau)
-   - `DiagnosticoDaTela` (**novo** LocalScript) ← [DiagnosticoDaTela.client.luau](src/StarterPlayer/StarterPlayerScripts/DiagnosticoDaTela.client.luau)
-4. **StarterPlayer › StarterPlayerScripts › QuadricicloCliente**
-   - o próprio LocalScript `QuadricicloCliente` ← [init.client.luau](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/init.client.luau)
-   - `BotoesDoCelular` (ModuleScript; **crie** se não existir) ← [BotoesDoCelular.luau](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/BotoesDoCelular.luau)
-   - [`Buzina`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Buzina.luau) · [`Camera`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Camera.luau) · [`FreioDeMao`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/FreioDeMao.luau) ·
-     [`Gancho`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Gancho.luau) · [`Monstro`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Monstro.luau) · [`Nitro`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Nitro.luau) ·
-     [`Pista`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Pista.luau) · [`Velocimetro`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Velocimetro.luau)
+**No Studio:** troque os arquivos da **lista completa**, lá em cima. Depois, teste com o diagnóstico:
 
 **Testar com o diagnóstico (o `DiagnosticoDaTela` só funciona no Studio):**
 
@@ -136,7 +191,7 @@ em cima do botão de pulo, o texto não cabia ("BUZIN A") e o Roblox mostra **no
 - Os botões encolhem junto com os outros HUDs (módulo `Tela`).
 - Teclado e controle continuam **exatamente iguais**.
 
-**Passo a passo no Studio** (já está incluído na lista completa da **Atualização 3**, acima):
+**Passo a passo no Studio** (já está incluído na **lista completa**, lá em cima):
 
 1. Em **StarterPlayer › StarterPlayerScripts › QuadricicloCliente**, **crie** um ModuleScript:
    - `BotoesDoCelular` ← [BotoesDoCelular.luau](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/BotoesDoCelular.luau)
@@ -161,8 +216,8 @@ no canto de baixo à direita (no celular, tudo encolhe junto).
 
 ## Atualização: celular e controle
 
-(Os arquivos desta atualização já estão na lista completa da **Atualização 3**, lá em cima: siga aquela
-lista. Esta seção fica aqui para explicar o que mudou.)
+(Os arquivos desta atualização já estão na **lista completa**, lá em cima: siga aquela lista. Esta seção
+fica aqui para explicar o que mudou.)
 
 **O que muda:**
 - **HUD menor no celular.** Os HUDs (velocímetro, barra do gancho, barra do super pulo, os textos

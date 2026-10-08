@@ -11,8 +11,8 @@
 	  PESO ...... acelerando, a frente sobe; freando, ela abaixa; na curva, ele deita para fora (nas molas).
 	  CÂMERA .... inclina um pouquinho para dentro da curva.
 	  MARCAS .... derrapando, freando forte ou numa curva forte, os pneus deixam marcas escuras no chão.
-	  POEIRA .... as rodas soltam poeira quando escorregam ou patinam.
-	  POUSO ..... caiu de um pulo? Poeira em volta das rodas e um tranco na tela.
+	  POUSO ..... caiu de um pulo? Um tranco na tela.
+	(A POEIRA e os pedaços do chão que as rodas jogam ficam no módulo PoeiraDoChao, com a cor do chão.)
 
 	Cada efeito tem um liga/desliga em AJUSTES (logo abaixo): dá para testar um de cada vez.
 	O QuadricicloCliente só precisa chamar Sensacao.atualizar(quad, dt) a cada frame.
@@ -47,7 +47,6 @@ local MARCAS_DURACAO = 3 -- (s) quanto tempo a marca fica no chão
 local MARCAS_DE_LADO = 9 -- (studs/s) a roda escorregando de lado mais rápido que isso deixa marca
 local MARCAS_GIRANDO = 14 -- (studs/s) a roda patinando (ou travada) mais que isso deixa marca
 
-local POEIRA_LIGADA = true
 local POUSO_LIGADO = true
 
 -- =====================================================================
@@ -58,7 +57,6 @@ type Roda = {
 	raio: number, -- o raio da roda
 	eixo: Attachment?, -- o Attachment do motor da roda (o eixo X dele = para onde aponta o eixo da roda)
 	marca: Trail, -- a marca do pneu no chão
-	poeira: ParticleEmitter, -- a poeira que sai do pneu
 	tocando: boolean, -- a roda está encostando no chão agora?
 	marcando: boolean, -- está deixando marca agora?
 }
@@ -99,7 +97,7 @@ local function comoInstancia(valor: any): Instance?
 end
 
 -- Acha a peça que NÃO gira junto com a roda (a "manga", onde o motor da roda está preso).
--- A marca e a poeira ficam presas nela: assim acompanham a roda (a mola e a direção) sem girar junto.
+-- A marca fica presa nela: assim acompanha a roda (a mola e a direção) sem girar junto.
 local function pecaQueNaoGira(roda: BasePart, motor: any, chassi: BasePart): (BasePart, Attachment?)
 	local dobradica = comoInstancia(motor) -- (o motor da roda é uma HingeConstraint)
 	if dobradica and dobradica:IsA("HingeConstraint") then
@@ -113,7 +111,7 @@ local function pecaQueNaoGira(roda: BasePart, motor: any, chassi: BasePart): (Ba
 	return chassi, nil -- (não achou: usa o Chassi mesmo)
 end
 
--- Cria a marca do pneu e a poeira de UMA roda.
+-- Cria a marca do pneu de UMA roda.
 local function prepararRoda(info: any, chassi: BasePart, referencia: CFrame, criados: { Instance }): Roda?
 	local roda = comoInstancia(info.roda)
 	if roda == nil or not roda:IsA("BasePart") then
@@ -137,7 +135,6 @@ local function prepararRoda(info: any, chassi: BasePart, referencia: CFrame, cri
 		table.insert(criados, anexo)
 		return anexo
 	end
-	local pneu = pontoNaBase(ponto, "SensacaoPneu") -- o meio do pneu, no chão
 	local beiradaA = pontoNaBase(ponto + lado * meiaLargura, "SensacaoMarcaA") -- as 2 beiradas da marca
 	local beiradaB = pontoNaBase(ponto - lado * meiaLargura, "SensacaoMarcaB")
 
@@ -160,40 +157,11 @@ local function prepararRoda(info: any, chassi: BasePart, referencia: CFrame, cri
 	marca.Parent = base
 	table.insert(criados, marca)
 
-	-- A POEIRA: bolotas clarinhas que saem do pneu (a quantidade muda a cada frame).
-	local poeira = Instance.new("ParticleEmitter")
-	poeira.Name = "SensacaoPoeira"
-	poeira.Texture = "rbxasset://textures/particles/smoke_main.dds"
-	poeira.Color = ColorSequence.new(Color3.fromRGB(236, 228, 210)) -- bege bem clarinho
-	poeira.LightInfluence = 0.6
-	poeira.Size = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0.5),
-		NumberSequenceKeypoint.new(0.3, 1.6), -- incha rápido...
-		NumberSequenceKeypoint.new(1, 2.4), -- ...e continua crescendo devagar
-	})
-	poeira.Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0.4),
-		NumberSequenceKeypoint.new(0.6, 0.65),
-		NumberSequenceKeypoint.new(1, 1), -- some no fim
-	})
-	poeira.Lifetime = NumberRange.new(0.5, 0.9)
-	poeira.Speed = NumberRange.new(1.5, 4)
-	poeira.SpreadAngle = Vector2.new(45, 45)
-	poeira.Acceleration = Vector3.new(0, 2, 0) -- sobe um pouquinho
-	poeira.Drag = 3 -- e freia no ar (fica boiando atrás da roda)
-	poeira.Rotation = NumberRange.new(0, 360)
-	poeira.RotSpeed = NumberRange.new(-30, 30)
-	poeira.EmissionDirection = Enum.NormalId.Top -- para "cima" do quadriciclo
-	poeira.Rate = 0 -- (o atualizar muda conforme a roda escorrega)
-	poeira.Parent = pneu
-	table.insert(criados, poeira)
-
 	return {
 		roda = roda,
 		raio = raio,
 		eixo = eixo,
 		marca = marca,
-		poeira = poeira,
 		tocando = false,
 		marcando = false,
 	}
@@ -307,7 +275,6 @@ local function desligar()
 	end
 	for _, roda in atual.rodas do
 		roda.marca.Enabled = false -- (a marca que já está no chão some sozinha)
-		roda.poeira.Rate = 0
 	end
 	-- Espera as marcas sumirem e apaga tudo que o módulo criou.
 	local criados = atual.criados
@@ -387,8 +354,7 @@ function Sensacao.atualizar(quad: any, dt: number)
 		torque.Torque = girar * (chassi.AssemblyMass * fator)
 	end
 
-	-- 4) AS RODAS: escorregando de lado ou patinando? Marca no chão e poeira.
-	local freioDeMao = quad.freioDeMao == true
+	-- 4) AS RODAS: escorregando de lado ou patinando? Marca no chão.
 	for _, roda in agora.rodas do
 		local escorrega = 0 -- (studs/s) quão rápido o pneu escorrega de lado
 		local patina = 0 -- (studs/s) quanto o pneu gira diferente do chão (patinando ou travado)
@@ -412,14 +378,10 @@ function Sensacao.atualizar(quad: any, dt: number)
 			roda.marcando = marcar
 			roda.marca.Enabled = marcar
 		end
-		-- POEIRA: mais escorregando = mais poeira. (Com o freio de mão, quem solta fumaça é o FreioDeMao.)
-		local forca = math.max(escorrega, patina * 0.7)
-		roda.poeira.Rate = if POEIRA_LIGADA and roda.tocando and not freioDeMao
-			then math.clamp((forca - 5) * 1.2, 0, 22)
-			else 0
 	end
 
-	-- 5) O POUSO: estava no ar e uma roda encostou? Poeira e tranco na tela (mais forte se caiu rápido).
+	-- 5) O POUSO: estava no ar e uma roda encostou? Tranco na tela (mais forte se caiu rápido).
+	--    (O "puf" de poeira de cada roda é do módulo PoeiraDoChao.)
 	if rodasNoChao == 0 then
 		agora.tempoNoAr += dt
 		agora.quedaAntes = velocidade.Y
@@ -428,14 +390,6 @@ function Sensacao.atualizar(quad: any, dt: number)
 			local queda = -agora.quedaAntes -- (studs/s) quão rápido estava caindo
 			if queda > 15 then
 				CameraModulo.tremer(math.clamp(queda / 250, 0.05, 0.3))
-				if POEIRA_LIGADA then
-					local quantas = math.floor(math.clamp(queda / 5, 5, 18))
-					for _, roda in agora.rodas do
-						if roda.tocando then
-							roda.poeira:Emit(quantas) -- uma "nuvem" de uma vez
-						end
-					end
-				end
 			end
 		end
 		agora.tempoNoAr = 0
