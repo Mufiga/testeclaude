@@ -1,6 +1,6 @@
 # Gancho de voo (gancho 2 · SEGURAR + tag `Voar_Gancho`)
 
-> **Atualização:** depois deste guia, aplique também o `gancho-de-voo-v2.md` (pêndulo com corda curta, mínimo de 30 studs, carro mais solto).
+> **Atualizações:** depois deste guia, aplique o `gancho-de-voo-v2.md` e depois o `gancho-de-voo-v3.md` (pêndulo de física e controle no ar).
 
 Diagnóstico, solução, código, configuração e testes. Todo o código abaixo foi aplicado numa cópia dos
 scripts que você mandou e passou no verificador de tipos do Luau em modo `--!strict`, com as definições da
