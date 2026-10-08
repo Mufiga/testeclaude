@@ -171,7 +171,9 @@ RunService.RenderStepped:Connect(function()
 		lugaresNovos[i] = nil
 	end
 	if quantas > 0 then
-		workspace:BulkMoveTo(moedasParaMover, lugaresNovos, Enum.BulkMoveMode.FireCFrameChanged)
+		-- (o "::any": o verificador novo do Studio espera uma lista de Instance, não de BasePart.
+		-- Funciona igual; é só para ele não reclamar.)
+		workspace:BulkMoveTo(moedasParaMover :: any, lugaresNovos, Enum.BulkMoveMode.FireCFrameChanged)
 	end
 end)
 
