@@ -1,0 +1,14 @@
+{
+  "name": "rochas",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "RockKit": {
+        "$path": "src/shared/RockKit"
+      }
+    },
+    "ServerScriptService": {
+      "$path": "src/server"
+    }
+  }
+}

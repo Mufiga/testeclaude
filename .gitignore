@@ -1,0 +1,13 @@
+# artefato temporário do tools/preview/run.py
+build/_preview_bundle.luau
+
+# Rojo / Roblox
+*.rbxl
+*.rbxlx
+*.rbxl.lock
+*.rbxlx.lock
+sourcemap.json
+
+# ferramentas
+__pycache__/
+.DS_Store
