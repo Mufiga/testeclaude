@@ -336,7 +336,8 @@ local function criarBarra(): (ScreenGui?, Frame?)
 	tela.Parent = playerGui
 	local fundo = Instance.new("Frame")
 	fundo.AnchorPoint = Vector2.new(0.5, 1)
-	fundo.Position = UDim2.new(0.5, 0, 1, -Tela.tamanho(130))
+	-- (no celular: no meio do espaço livre entre o analógico e os botões da tela)
+	fundo.Position = UDim2.new(0.5, BotoesDoCelular.desvioDoMeio(), 1, -Tela.tamanho(130))
 	fundo.Size = UDim2.fromOffset(240, 16)
 	fundo.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 	fundo.BackgroundTransparency = 0.25

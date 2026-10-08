@@ -103,6 +103,19 @@ local limites = Instance.new("UISizeConstraint") -- nem pequeno demais (celular)
 limites.MinSize = Vector2.new(330, 300)
 limites.MaxSize = Vector2.new(920, 540)
 limites.Parent = painel
+
+-- (NOVO) CELULAR: o painel usa mais da tela (os cartões ficam maiores) e nunca passa da tela.
+-- (Antes, o tamanho mínimo de 330 × 300 cortava o painel em celulares de tela baixa.)
+local function ajustarPainel()
+	local camera = workspace.CurrentCamera
+	local tamanho = if camera then camera.ViewportSize else Vector2.zero
+	painel.Size = if Tela.noToque() then UDim2.fromScale(0.92, 0.86) else UDim2.fromScale(0.72, 0.64)
+	if tamanho.X > 0 and tamanho.Y > 0 then
+		limites.MinSize = Vector2.new(math.min(330, tamanho.X - 24), math.min(300, tamanho.Y - 24))
+	end
+end
+ajustarPainel()
+Tela.aoMudar(ajustarPainel) -- (girou o celular, mudou a janela, trocou para o toque)
 local escalaDoPainel = Instance.new("UIScale") -- (para a animação de abrir)
 -- CONTROLE: a "seleção" do controle (o contorno que pula de botão em botão) não sai de dentro do painel.
 painel.SelectionGroup = true
@@ -118,6 +131,10 @@ titulo.Size = UDim2.new(1, -100, 0, 36)
 local subtitulo = novoTexto(painel, "Escolha seu quadriciclo", 15, COR_TEXTO_FRACO, Enum.Font.GothamMedium)
 subtitulo.Position = UDim2.fromOffset(22, 50)
 subtitulo.Size = UDim2.new(1, -100, 0, 20)
+subtitulo.TextScaled = true -- (painel estreito: diminui para caber; a caixa tem a altura de uma linha só)
+local limiteDoSubtitulo = Instance.new("UITextSizeConstraint")
+limiteDoSubtitulo.MaxTextSize = 15
+limiteDoSubtitulo.Parent = subtitulo
 
 local botaoFechar = Instance.new("TextButton")
 botaoFechar.AnchorPoint = Vector2.new(1, 0)
@@ -159,7 +176,10 @@ respiro.Parent = lista
 local botaoSpawnar = Instance.new("TextButton")
 botaoSpawnar.AnchorPoint = Vector2.new(1, 1)
 botaoSpawnar.Position = UDim2.new(1, -20, 1, -18)
-botaoSpawnar.Size = UDim2.fromOffset(220, 52)
+botaoSpawnar.Size = UDim2.new(0.42, 0, 0, 52) -- (painel estreito: o botão diminui e o texto do lado continua cabendo)
+local limiteDoSpawnar = Instance.new("UISizeConstraint")
+limiteDoSpawnar.MaxSize = Vector2.new(220, 52)
+limiteDoSpawnar.Parent = botaoSpawnar
 botaoSpawnar.BackgroundColor3 = COR_BOTAO
 botaoSpawnar.Text = "SPAWNAR"
 botaoSpawnar.TextSize = 24
@@ -175,7 +195,7 @@ brilhoDoBotao.Parent = botaoSpawnar
 local estado = novoTexto(painel, "", 15, COR_TEXTO_FRACO, Enum.Font.GothamMedium) -- "Selecionado: ..." e avisos
 estado.AnchorPoint = Vector2.new(0, 1)
 estado.Position = UDim2.new(0, 22, 1, -18)
-estado.Size = UDim2.new(1, -270, 0, 52)
+estado.Size = UDim2.new(0.58, -50, 0, 52)
 estado.TextWrapped = true
 
 -- =====================================================================
@@ -249,12 +269,21 @@ local function criarCartao(molde: Model, ordem: number)
 	local nome = novoTexto(cartao, Vitrine.nomeBonito(molde), 18, Color3.new(1, 1, 1), Enum.Font.GothamBlack)
 	nome.Position = UDim2.new(0, 12, 0.7, 6)
 	nome.Size = UDim2.new(1, -24, 0, 22)
-	nome.TextTruncate = Enum.TextTruncate.AtEnd
+	-- (NOVO) o nome diminui para caber (cartão pequeno, no celular). A caixa tem a altura de UMA linha,
+	-- então o TextScaled não quebra a palavra no meio.
+	nome.TextScaled = true
+	local limiteDoNome = Instance.new("UITextSizeConstraint")
+	limiteDoNome.MaxTextSize = 18
+	limiteDoNome.Parent = nome
 	local descricao = novoTexto(cartao, Vitrine.descricao(molde), 13, COR_TEXTO_FRACO, Enum.Font.GothamMedium)
 	descricao.Position = UDim2.new(0, 12, 0.7, 30)
 	descricao.Size = UDim2.new(1, -24, 0.3, -38)
 	descricao.TextWrapped = true
 	descricao.TextYAlignment = Enum.TextYAlignment.Top
+	-- (NOVO) cartão pequeno (celular): sem espaço nem para uma linha, a descrição some (em vez de cortada)
+	descricao:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		descricao.Visible = descricao.AbsoluteSize.Y >= descricao.TextSize
+	end)
 
 	local clicar = Instance.new("TextButton") -- invisível, por cima de tudo: clicar escolhe este
 	clicar.Size = UDim2.fromScale(1, 1)
@@ -338,7 +367,7 @@ local function prepararControle()
 		subtitulo.Text = "Escolha seu quadriciclo"
 		return
 	end
-	subtitulo.Text = "◀ ▶ escolhe  ·  A chama  ·  B fecha"
+	subtitulo.Text = "◀ ▶ escolhe · A chama · B fecha"
 	ContextActionService:BindActionAtPriority(ACAO_FECHAR_NO_CONTROLE, function(_nome: string, estadoDaEntrada: Enum.UserInputState, _entrada: InputObject): Enum.ContextActionResult?
 		if estadoDaEntrada == Enum.UserInputState.Begin then
 			fecharGaragem()

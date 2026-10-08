@@ -133,6 +133,8 @@ type IconeDaBarra = {
 -- Peças do HUD do gancho (criado por código quando você senta; some quando você levanta).
 type HudGancho = {
 	tela: ScreenGui,
+	barra: Frame, -- (a barra de ganchos inteira)
+	posicao: UDim2, -- (Config.GanchoIconePosicao: onde a barra fica fora do celular)
 	icones: { IconeDaBarra }, -- a barra de ganchos
 	mira: CanvasGroup, -- só aparece enquanto você mira (fica vermelha se não der para prender ali)
 	sons: { [string]: Sound }, -- (NOVO) os sons que só você ouve (ex.: "RecargaImpulso")
@@ -612,6 +614,16 @@ local function criarIconeDaBarra(quad: Quadriciclo, barra: Frame, tipo: TipoDeGa
 	}
 end
 
+-- No celular, a barra (se ela estiver no meio, embaixo) vai um pouco para o lado: fica no meio do
+-- espaço livre entre o analógico e os botões da tela, sem ficar embaixo de nenhum dos dois.
+local function posicionarBarra(barra: Frame, posicao: UDim2)
+	if posicao.X.Scale == 0.5 and posicao.Y.Scale == 1 then
+		barra.Position = posicao + UDim2.fromOffset(BotoesDoCelular.desvioDoMeio(), 0)
+	else
+		barra.Position = posicao
+	end
+end
+
 local function criarHudGancho(quad: Quadriciclo)
 	local Config = quad.Config
 	local playerGui = jogadorLocal:FindFirstChildOfClass("PlayerGui")
@@ -628,7 +640,7 @@ local function criarHudGancho(quad: Quadriciclo)
 	local barra = Instance.new("Frame")
 	barra.Name = "BarraDeGanchos"
 	barra.AnchorPoint = Vector2.new(0.5, 1) -- o "ponto de apoio" é o meio da borda de baixo
-	barra.Position = Config.GanchoIconePosicao
+	posicionarBarra(barra, Config.GanchoIconePosicao)
 	barra.Size = UDim2.fromOffset(0, 0)
 	barra.AutomaticSize = Enum.AutomaticSize.XY -- o tamanho vem dos ícones (cresce sozinha)
 	barra.BackgroundTransparency = 1
@@ -673,9 +685,17 @@ local function criarHudGancho(quad: Quadriciclo)
 		sons["Recarga" .. tipo.id] = som
 	end
 	tela.Parent = playerGui
-	hudGancho = { tela = tela, icones = icones, mira = mira, sons = sons }
+	hudGancho = { tela = tela, barra = barra, posicao = Config.GanchoIconePosicao, icones = icones, mira = mira, sons = sons }
 	ultimoEscolhido = tipoSelecionado -- (acabou de sentar: não conta como "trocou de gancho")
 end
+
+-- A tela mudou (girou, trocou para o toque...): a barra volta para o lugar certo.
+Tela.aoMudar(function()
+	local hud = hudGancho
+	if hud then
+		posicionarBarra(hud.barra, hud.posicao)
+	end
+end)
 
 local function destruirHudGancho()
 	local hud = hudGancho

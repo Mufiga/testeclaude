@@ -9,6 +9,117 @@ colocar no seu jogo**.
 
 ---
 
+## Atualização 3: celular sem nada cortado (+ diagnóstico)
+
+**Por que ainda aparecia coisa cortada no celular:**
+
+1. **O texto dos botões novos.** Eu tinha usado o `TextScaled` do Roblox (diminui o texto para caber).
+   Só que, quando a caixa do texto é alta, ele prefere **quebrar a palavra no meio** para a letra
+   ficar maior: "BUZIN A", "GANC HO". Agora o tamanho da letra é **medido** para caber numa linha só,
+   sem `TextScaled` e sem quebrar linha.
+2. **Os botões podiam passar da tela** em celular pequeno ou em pé. Agora eles ficam dentro da
+   **área segura** (sem o entalhe da câmera, a barrinha de baixo do iPhone e a barra do Roblox) e nunca
+   passam de 46% da largura nem de 75% da altura dela.
+3. **O HUD de veículos aberto** podia passar da parte de baixo da tela em celulares baixos. Agora a lista
+   mostra menos cartões (e rola) para o HUD inteiro caber.
+4. **A Garagem** tinha um tamanho mínimo de 330 × 300 pixels, que cortava em celular de tela baixa. Agora,
+   no celular, ela usa 92% × 86% da tela (cartões maiores) e nunca passa da tela. O botão SPAWNAR e os
+   textos se ajustam ao espaço.
+5. **A barra de ganchos e a barra do super pulo** (no meio, embaixo) podiam ficar embaixo dos botões em
+   celulares estreitos. Agora elas vão para o meio do espaço livre entre o analógico e os botões.
+6. **Celular em pé:** o tamanho dos HUDs agora vem do **lado menor** da tela (antes, só da altura).
+7. Se os botões que você vê ainda são os **cinzas, redondos e amontoados** (como no seu primeiro print),
+   algum script ainda é da versão antiga. O diagnóstico (abaixo) avisa isso no Output.
+
+**Passo a passo no Studio:** troque **todos** estes, mesmo os que você já trocou nas atualizações
+anteriores. Trocar de novo não faz mal e garante que nenhum ficou antigo.
+
+1. **ReplicatedStorage › Compartilhado**
+   - `ConfiguracaoPadrao` ← [ConfiguracaoPadrao.luau](src/ReplicatedStorage/Compartilhado/ConfiguracaoPadrao.luau)
+   - `Tela` (ModuleScript; **crie** se não existir) ← [Tela.luau](src/ReplicatedStorage/Compartilhado/Tela.luau)
+2. **ServerScriptService › QuadricicloServidor**
+   - `Motorista` ← [Motorista.luau](src/ServerScriptService/QuadricicloServidor/Motorista.luau)
+3. **StarterPlayer › StarterPlayerScripts** (LocalScripts)
+   - `AvisosProgresso` ← [AvisosProgresso.client.luau](src/StarterPlayer/StarterPlayerScripts/AvisosProgresso.client.luau)
+   - `GaragemCliente` ← [GaragemCliente.client.luau](src/StarterPlayer/StarterPlayerScripts/GaragemCliente.client.luau)
+   - `SeletorDeVeiculo` ← [SeletorDeVeiculo.client.luau](src/StarterPlayer/StarterPlayerScripts/SeletorDeVeiculo.client.luau)
+   - `DiagnosticoDaTela` (**novo** LocalScript) ← [DiagnosticoDaTela.client.luau](src/StarterPlayer/StarterPlayerScripts/DiagnosticoDaTela.client.luau)
+4. **StarterPlayer › StarterPlayerScripts › QuadricicloCliente**
+   - o próprio LocalScript `QuadricicloCliente` ← [init.client.luau](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/init.client.luau)
+   - `BotoesDoCelular` (ModuleScript; **crie** se não existir) ← [BotoesDoCelular.luau](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/BotoesDoCelular.luau)
+   - [`Buzina`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Buzina.luau) · [`Camera`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Camera.luau) · [`FreioDeMao`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/FreioDeMao.luau) ·
+     [`Gancho`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Gancho.luau) · [`Monstro`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Monstro.luau) · [`Nitro`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Nitro.luau) ·
+     [`Pista`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Pista.luau) · [`Velocimetro`](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Velocimetro.luau)
+
+**Testar com o diagnóstico (o `DiagnosticoDaTela` só funciona no Studio):**
+
+1. *Test › Device*: escolha um celular (por exemplo, iPhone 14, iPhone SE ou um Galaxy), **deitado**.
+2. Dê Play e abra o Output (*View › Output*).
+3. Aparece uma linha como `[Tela] 844 × 390 pixels (área segura 750 × 354) · jogando com: Touch ·
+   tamanho dos HUDs: 0.65`. Uns segundos depois:
+   - `[Tela] Nada cortado nesta tela.` = tudo certo;
+   - ou linhas **amarelas** dizendo **o que** está cortado. Por exemplo: um HUD que passa da borda, um
+     texto que não cabe, um botão do celular em cima do seu `HUDQuadriciclo` ou "botões AUTOMÁTICOS do
+     Roblox na tela" (script antigo).
+4. **Sente num veículo** e olhe de novo: os botões só aparecem dirigindo.
+5. Troque de aparelho (e gire a tela) para testar outros tamanhos. Cada troca escreve o tamanho novo e
+   confere tudo de novo.
+6. Se algo continuar cortado, me mande as linhas amarelas (ou um print) que eu arrumo.
+
+Para conferir se os botões novos estão rodando: com o Play ligado no emulador, abra no Explorer
+**Players › (seu nome) › PlayerGui**. Deve ter **BotoesDoCelular**. Se tiver **ContextActionGui** com
+botões dentro, algum script ainda cria os botões automáticos (é da versão antiga).
+
+> O emulador mostra o **tamanho** da tela, mas não a **velocidade** de um celular de verdade. De vez em
+> quando, teste também no seu celular, com o app do Roblox.
+
+---
+
+## Como o jogo funciona no celular (para entender)
+
+![Mapa da tela no celular](docs/celular-mapa-da-tela.png)
+
+A tela do celular tem **4 camadas**:
+
+1. **Os controles do Roblox** (o "PlayerModule", que já vem no jogo): o **analógico** e o **botão de
+   pulo**.
+   - Andando: é o analógico normal do Roblox, que aparece onde você encosta o dedo.
+   - Dirigindo: o `Motorista` (no servidor) troca para o analógico **fixo**, parado no canto
+     (`AnalogicoFixoNoCelular` na `ConfiguracaoPadrao`). O `BotoesDoCelular` **esconde o botão de pulo**
+     (ele tirava você do veículo sem querer). Ao sair do veículo, os dois voltam ao normal.
+2. **Os botões de ação** (`BotoesDoCelular`): GÁS, FREIO, GANCHO, NITRO, F. MÃO, PULO, SAIR, BUZINA e
+   CÂMERA. Cada ação do veículo é ligada **uma vez só**: o teclado e o controle continuam no
+   `ContextActionService`, e o botão da tela é desenhado pelo `BotoesDoCelular`. Os botões automáticos
+   do Roblox **não são mais usados**: ficavam amontoados, o texto quebrava e cabiam no máximo 7.
+   - Mudar lugar, tamanho ou cor de um botão: tabela `BOTOES`, no começo do `BotoesDoCelular`.
+3. **Os HUDs** (cada um é uma `ScreenGui`): velocímetro, barra de ganchos, HUD de veículos, Garagem,
+   avisos. Todos ficam dentro da **área segura** da tela (a linha tracejada no desenho).
+   - O módulo `Tela` decide o **tamanho** (com um `UIScale`): 1 no computador, 0,65 num celular e no
+     máximo 0,85 num tablet.
+   - Quer tudo maior ou menor no celular? Mude `TAMANHO_TELA_PEQUENA` no `Tela`. Vale para todos os
+     HUDs de uma vez.
+4. **Os efeitos** (riscos de velocidade, "PERFEITO!", "MORTAL!"): ficam por cima do jogo e somem sozinhos.
+
+**Como o jogo sabe que é celular?** `Tela.noToque()` pergunta ao Roblox como a pessoa está jogando
+**agora** (`UserInputService.PreferredInput`: toque, controle ou teclado e mouse). Se alguém liga um
+controle no celular, os botões da tela somem e o controle passa a valer. Se desliga, eles voltam.
+
+**Regra de ouro para textos no celular:** só use `TextScaled` numa caixa da altura de **uma linha**.
+Numa caixa alta, ele quebra a palavra no meio. Para uma caixa grande, escolha o tamanho da letra (ou meça
+com `TextService:GetTextSize`, como no `BotoesDoCelular`). O diagnóstico avisa quando um texto não cabe.
+
+| Script | O que ele faz no celular |
+|---|---|
+| `Tela` (ModuleScript) | Tamanho dos HUDs em cada tela, e se é toque ou controle |
+| `BotoesDoCelular` (ModuleScript) | Os botões de dirigir e o botão de pulo escondido |
+| `Motorista` (servidor) | O analógico fixo enquanto dirige |
+| `SeletorDeVeiculo` | O HUD de veículos fica em cima, encolhido, e cabe em tela baixa |
+| `GaragemCliente` | A Garagem usa quase a tela toda e nunca passa dela |
+| `Gancho` e `Monstro` | As barras do meio vão para o espaço livre entre o analógico e os botões |
+| `DiagnosticoDaTela` | Só no Studio: escreve no Output o que está cortado ou um em cima do outro |
+
+---
+
 ## Atualização 2: botões do celular
 
 Os botões de toque de antes (GÁS, FREIO, NITRO...) eram os **automáticos do Roblox**: ficavam amontoados
@@ -25,7 +136,7 @@ em cima do botão de pulo, o texto não cabia ("BUZIN A") e o Roblox mostra **no
 - Os botões encolhem junto com os outros HUDs (módulo `Tela`).
 - Teclado e controle continuam **exatamente iguais**.
 
-**Passo a passo no Studio** (depois da *Atualização: celular e controle*, logo abaixo):
+**Passo a passo no Studio** (já está incluído na lista completa da **Atualização 3**, acima):
 
 1. Em **StarterPlayer › StarterPlayerScripts › QuadricicloCliente**, **crie** um ModuleScript:
    - `BotoesDoCelular` ← [BotoesDoCelular.luau](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/BotoesDoCelular.luau)
@@ -50,8 +161,8 @@ no canto de baixo à direita (no celular, tudo encolhe junto).
 
 ## Atualização: celular e controle
 
-Se você **já colocou** a primeira versão no seu jogo, só precisa fazer o que está nesta seção (e depois a
-**Atualização 2**, acima).
+(Os arquivos desta atualização já estão na lista completa da **Atualização 3**, lá em cima: siga aquela
+lista. Esta seção fica aqui para explicar o que mudou.)
 
 **O que muda:**
 - **HUD menor no celular.** Os HUDs (velocímetro, barra do gancho, barra do super pulo, os textos

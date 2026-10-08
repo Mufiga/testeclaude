@@ -13,6 +13,8 @@
 	  - Tela.tamanho(34) ..... um número (ex.: o tamanho de um texto) já no tamanho certo da tela.
 	  - Tela.noToque() ....... o jogador está jogando pela tela de toque (celular/tablet)?
 	  - Tela.noControle() .... o jogador está jogando com controle (videogame)?
+	  - Tela.aoMudar(f) ...... chama f quando o tamanho muda (para quem calcula o próprio tamanho).
+	O tamanho vem do LADO MENOR da tela: celular deitado = a altura; celular em pé = a largura.
 	Quer os HUDs ainda menores (ou maiores) no celular? Mude os AJUSTES aqui embaixo: vale para todos.
 ]]
 
@@ -23,9 +25,9 @@ local Tela = {}
 -- =====================================================================
 -- AJUSTES (1 = o tamanho normal, o do computador)
 -- =====================================================================
-local TAMANHO_TELA_PEQUENA = 0.65 -- numa tela com 400 pixels de altura (celular deitado)
-local ALTURA_TELA_PEQUENA = 400 -- (pixels) até esta altura, vale o TAMANHO_TELA_PEQUENA
-local ALTURA_TELA_NORMAL = 800 -- (pixels) desta altura para cima, tamanho normal (no meio, fica no meio)
+local TAMANHO_TELA_PEQUENA = 0.65 -- numa tela com 400 pixels no lado menor (celular)
+local LADO_TELA_PEQUENA = 400 -- (pixels) até este lado menor, vale o TAMANHO_TELA_PEQUENA
+local LADO_TELA_NORMAL = 800 -- (pixels) deste lado menor para cima, tamanho normal (no meio, fica no meio)
 local TAMANHO_MAXIMO_NO_TOQUE = 0.85 -- com tela de toque (celular/tablet), nunca maior que isso
 
 -- =====================================================================
@@ -51,12 +53,13 @@ end
 -- =====================================================================
 function Tela.escala(): number
 	local camera = workspace.CurrentCamera
-	local altura = if camera then camera.ViewportSize.Y else 0
-	if altura < 100 then
+	local tamanhoDaTela = if camera then camera.ViewportSize else Vector2.zero
+	local lado = math.min(tamanhoDaTela.X, tamanhoDaTela.Y) -- o lado MENOR (deitado ou em pé, tanto faz)
+	if lado < 100 then
 		-- (a câmera ainda não sabe o tamanho da tela: chuta pelo aparelho; acerta logo depois)
 		return if Tela.noToque() then TAMANHO_TELA_PEQUENA else 1
 	end
-	local t = math.clamp((altura - ALTURA_TELA_PEQUENA) / (ALTURA_TELA_NORMAL - ALTURA_TELA_PEQUENA), 0, 1)
+	local t = math.clamp((lado - LADO_TELA_PEQUENA) / (LADO_TELA_NORMAL - LADO_TELA_PEQUENA), 0, 1)
 	local escala = TAMANHO_TELA_PEQUENA + (1 - TAMANHO_TELA_PEQUENA) * t
 	if Tela.noToque() then
 		escala = math.min(escala, TAMANHO_MAXIMO_NO_TOQUE)
@@ -90,11 +93,20 @@ function Tela.encolher(hud: GuiObject): UIScale
 	return escala
 end
 
+-- Quem calcula o próprio tamanho (ex.: os botões do celular) pede para ser avisado quando a tela muda.
+local quemQuerSaber: { () -> () } = {}
+function Tela.aoMudar(funcao: () -> ())
+	table.insert(quemQuerSaber, funcao)
+end
+
 -- A tela mudou (girou o celular, mudou o tamanho da janela, trocou para o toque): acerta todos.
 local function reaplicar()
 	local fator = Tela.escala()
 	for escala, normal in encolhidos do
 		escala.Scale = normal * fator
+	end
+	for _, funcao in quemQuerSaber do
+		task.spawn(funcao) -- (se um der erro, os outros continuam)
 	end
 end
 

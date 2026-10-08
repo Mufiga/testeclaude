@@ -16,7 +16,8 @@
 	  - "EM USO" marca o veículo que você está usando. O botão "–" (ou o título) encolhe o HUD.
 	  - CONTROLE (videogame), andando a pé: ◀ ▶ escolhem o veículo · ▲ aperta o botão grande
 	    (CHAMAR / MOSTRAR CAMINHO) · ▼ encolhe ou abre o HUD. (Dirigindo, essas setas são do veículo.)
-	  - No CELULAR o HUD fica menor e no canto de cima (longe do analógico).
+	  - No CELULAR o HUD fica menor e no canto de cima (longe do analógico). Se a tela for baixa,
+	    a lista mostra menos cartões (e rola), para o HUD inteiro caber na tela.
 	A seta e a coluna de luz só existem no SEU computador (os outros jogadores não veem).
 	Usa o mesmo "fio" do script Spawner (o RemoteEvent "Garagem"): quem confere tudo continua sendo o
 	servidor. O "E  Garagem" dos spawners não muda.
@@ -49,7 +50,7 @@ local ANCORA = Vector2.new(0, 0.5) -- que ponto do HUD fica na POSICAO (0, 0.5 =
 local POSICAO_NO_CELULAR = UDim2.new(0, 12, 0, 8) -- no celular: canto de CIMA, à esquerda (longe do analógico)
 local ANCORA_NO_CELULAR = Vector2.new(0, 0) -- (0, 0 = o canto de cima à esquerda do HUD)
 local LARGURA = 264 -- (pixels) a largura do HUD
-local MAXIMO_DE_CARTOES = 4 -- mais veículos que isso: a lista rola
+local MAXIMO_DE_CARTOES = 4 -- mais veículos que isso: a lista rola (em tela baixa, mostra menos)
 local ENCOLHIDO_NO_CELULAR = true -- no celular, o HUD começa encolhido (só o título)
 local GIRO_DA_VITRINE = 1.2 -- (radianos/s) o giro do veículo no cartão (com o mouse em cima, e o escolhido)
 local GIRO_DO_ESCOLHIDO_POR_SEGUNDO = 30 -- quantas vezes por segundo o veículo ESCOLHIDO é redesenhado girando
@@ -162,7 +163,19 @@ suporte.Size = UDim2.fromOffset(LARGURA, 0)
 suporte.AutomaticSize = Enum.AutomaticSize.Y
 suporte.BackgroundTransparency = 1
 suporte.Parent = tela
-Tela.encolher(suporte) -- em telas pequenas (celular), o HUD diminui (e acerta sozinho se a tela girar)
+local escalaDoHud = Tela.encolher(suporte) -- em telas pequenas (celular), o HUD diminui (e acerta sozinho se a tela girar)
+
+-- Trocou o jeito de jogar (ex.: o Studio começa no mouse e depois passa para o toque do celular):
+-- o HUD vai para o canto certo.
+UserInputService:GetPropertyChangedSignal("PreferredInput"):Connect(function()
+	local agora = Tela.noToque()
+	if agora ~= noCelular then
+		noCelular = agora
+		posicaoDoHud = if agora then POSICAO_NO_CELULAR else POSICAO
+		suporte.AnchorPoint = if agora then ANCORA_NO_CELULAR else ANCORA
+		suporte.Position = posicaoDoHud
+	end
+end)
 
 local hud = Instance.new("Frame")
 hud.Name = "HUD"
@@ -489,6 +502,26 @@ local function criarCartao(molde: Model, ordem: number)
 	end)
 end
 
+-- QUANTOS CARTÕES APARECEM: até MAXIMO_DE_CARTOES, mas numa tela baixa (celular) menos, para o HUD
+-- inteiro caber na tela (os outros a lista rola). Cada cartão ocupa 79 (72 + 7 de espaço).
+local ALTURA_DO_RESTO = 160 -- (pixels, sem encolher) o título, o botão grande, a bússola e as margens
+local ALTURA_DA_DICA = 40 -- (pixels) a dica do controle, quando aparece
+local cartoesVisiveis = MAXIMO_DE_CARTOES
+local function ajustarAlturaDaLista()
+	local maximo = MAXIMO_DE_CARTOES
+	local alturaDaTela = tela.AbsoluteSize.Y -- (só a área segura: sem a barra do Roblox e o entalhe)
+	local escala = escalaDoHud.Scale
+	if alturaDaTela > 0 and escala > 0 then
+		local cabe = alturaDaTela / escala - 16 - ALTURA_DO_RESTO - (if dicaDoControle.Visible then ALTURA_DA_DICA else 0)
+		maximo = math.clamp(math.floor((cabe + 7 - 10) / 79), 1, MAXIMO_DE_CARTOES)
+	end
+	cartoesVisiveis = math.min(#ordemDosCartoes, maximo)
+	-- a lista mostra cartoesVisiveis cartões (72 + 7 de espaço cada, + 10 de margem); o resto rola
+	lista.Size = UDim2.new(1, 0, 0, math.max(cartoesVisiveis * 79 - 7 + 10, 0))
+end
+tela:GetPropertyChangedSignal("AbsoluteSize"):Connect(ajustarAlturaDaLista) -- (girou a tela, mudou a janela...)
+Tela.aoMudar(ajustarAlturaDaLista)
+
 -- (Re)faz todos os cartões: pelo atributo "Ordem"; empatou, o quadriciclo vem antes do monstro; depois, pelo nome.
 local function montarCartoes()
 	precisaMontar = false
@@ -504,9 +537,7 @@ local function montarCartoes()
 		criarCartao(molde, i)
 		table.insert(ordemDosCartoes, molde.Name)
 	end
-	-- a lista mostra até MAXIMO_DE_CARTOES cartões (72 + 7 de espaço cada, + 10 de margem); o resto rola
-	local visiveis = math.min(#ordenados, MAXIMO_DE_CARTOES)
-	lista.Size = UDim2.new(1, 0, 0, math.max(visiveis * 79 - 7 + 10, 0))
+	ajustarAlturaDaLista()
 	local atual = escolhido
 	if atual == nil or cartoes[atual] == nil then
 		escolhido = if ordenados[1] then ordenados[1].Name else nil -- começa com o primeiro escolhido
@@ -695,7 +726,7 @@ local corDaMensagem = COR_TEXTO_FRACO
 local mensagemAte = 0 -- (os.clock) até quando o aviso fica
 local esperandoAte = 0 -- (os.clock) pediu o veículo: espera a resposta do servidor até aqui
 local prontoAte = 0 -- (os.clock) mostra "PRONTO!" no botão até aqui
-local encolhido = ENCOLHIDO_NO_CELULAR and UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+local encolhido = ENCOLHIDO_NO_CELULAR and Tela.noToque()
 local botaoAceso = false -- mouse em cima do botão grande?
 local botaoApertado = false
 local escalaDoBotaoAgora = 1
@@ -709,7 +740,10 @@ end
 -- A dica do controle: muda com o HUD aberto ou encolhido (e some sem controle).
 local function atualizarDica()
 	local comControle = Tela.noControle()
-	dicaDoControle.Visible = comControle
+	if dicaDoControle.Visible ~= comControle then
+		dicaDoControle.Visible = comControle
+		task.defer(ajustarAlturaDaLista) -- (a dica ocupa espaço: a lista se ajusta)
+	end
 	if comControle then
 		dicaDoControle.Text = if encolhido
 			then "Controle: ▼ abre os veículos"
@@ -968,7 +1002,7 @@ local function escolherOutro(passo: number)
 	if cartao then
 		escolherCartao(cartao)
 		-- a lista rola até ele (quando tem mais veículos do que cabem)
-		lista.CanvasPosition = Vector2.new(0, math.max(0, (proximo - MAXIMO_DE_CARTOES) * 79))
+		lista.CanvasPosition = Vector2.new(0, math.max(0, (proximo - math.max(cartoesVisiveis, 1)) * 79))
 	end
 end
 
