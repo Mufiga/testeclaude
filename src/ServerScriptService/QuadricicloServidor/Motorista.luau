@@ -9,6 +9,7 @@
 	  - Quando alguém senta, passa a física (Network Ownership) para esse jogador: o controle
 	    responde na hora, sem esperar a internet. Quando ele levanta, devolve para o servidor.
 	  - O piloto fica sem massa (não muda o centro de massa) e não enrosca nas rodas.
+	  - No celular, dirigindo, o analógico fica PARADO no canto (Configuracao: AnalogicoFixoNoCelular).
 	  - As ações do motorista que todo mundo precisa ver/ouvir: buzina, nitro e derrapagem
 	    (viram Attributes no Model, que chegam em todos os jogadores) e "sair do banco".
 	Quem ACELERA e VIRA é o QuadricicloCliente, no computador do jogador.
@@ -32,6 +33,48 @@ local estadoOriginal: { [BasePart]: EstadoOriginal } = setmetatable({}, { __mode
 local donoDaPeca: { [BasePart]: Model } = setmetatable({}, { __mode = "k" }) :: any
 -- As peças do piloto de cada veículo.
 local pecasDoPiloto: { [Model]: { BasePart } } = {}
+
+-- =====================================================================
+-- (NOVO) O ANALÓGICO DO CELULAR
+-- =====================================================================
+-- O analógico padrão do Roblox no celular (o "DynamicThumbstick") aparece onde você encosta o dedo, em
+-- quase meia tela: dirigindo, isso atrapalha. Então, enquanto a pessoa dirige, ele vira o analógico
+-- CLÁSSICO, parado no canto de baixo. Quando ela sai do veículo, volta a ser o que era.
+-- (Quem decide qual analógico aparece é o Player.DevTouchMovementMode; mudar ele no servidor é o jeito
+-- que o Roblox recomenda. Em computador e videogame isso não muda nada.)
+local analogicoAntes: { [Player]: Enum.DevTouchMovementMode } = {} -- o modo de antes de sentar
+local veiculoDoJogador: { [Player]: Model } = {} -- em qual veículo o analógico está travado agora
+
+local function travarAnalogico(v: Veiculo, jogador: Player)
+	veiculoDoJogador[jogador] = v.modelo
+	if not v.Config.AnalogicoFixoNoCelular then
+		return
+	end
+	if analogicoAntes[jogador] == nil then
+		analogicoAntes[jogador] = jogador.DevTouchMovementMode
+	end
+	jogador.DevTouchMovementMode = Enum.DevTouchMovementMode.Thumbstick -- o clássico, parado no canto
+end
+
+-- Saiu deste veículo (ou ele sumiu): o analógico volta a ser o de antes.
+-- (Se a pessoa já está em OUTRO veículo, não mexe: aquele cuida dela.)
+local function soltarAnalogico(v: Veiculo)
+	for jogador, modelo in veiculoDoJogador do
+		if modelo == v.modelo then
+			veiculoDoJogador[jogador] = nil
+			local antes = analogicoAntes[jogador]
+			analogicoAntes[jogador] = nil
+			if antes and jogador.Parent ~= nil then
+				jogador.DevTouchMovementMode = antes
+			end
+		end
+	end
+end
+
+Players.PlayerRemoving:Connect(function(jogador: Player)
+	analogicoAntes[jogador] = nil
+	veiculoDoJogador[jogador] = nil
+end)
 
 -- Quem mandou a ação é mesmo quem está dirigindo ESTE veículo?
 function Motorista.ehOMotorista(v: Veiculo, jogador: Player): boolean
@@ -114,6 +157,7 @@ function Motorista.aoMudarOcupante(v: Veiculo)
 			local jogador = Players:GetPlayerFromCharacter(personagem)
 			if jogador then
 				prepararPiloto(v, personagem)
+				travarAnalogico(v, jogador) -- (NOVO) no celular: analógico parado no canto
 				-- OBRIGATÓRIO: a física passa a ser calculada no computador do jogador.
 				-- Assim o controle responde na hora, sem esperar a internet.
 				definirDonoDaFisica(v, jogador)
@@ -122,6 +166,7 @@ function Motorista.aoMudarOcupante(v: Veiculo)
 	else
 		-- O motorista levantou (pulou, morreu ou saiu do jogo).
 		restaurarPiloto(v)
+		soltarAnalogico(v) -- (NOVO) o analógico do celular volta a ser o de antes
 		estacionar(v)
 		-- Espera 1 frame: o Roblox ainda está desfazendo a solda do banco (SeatWeld).
 		-- Se devolvêssemos a física antes, o personagem seria levado junto para o servidor.
@@ -167,6 +212,7 @@ end
 function Motorista.ligar(v: Veiculo)
 	table.insert(v.limpezas, function()
 		restaurarPiloto(v)
+		soltarAnalogico(v)
 	end)
 end
 

@@ -14,6 +14,9 @@
 	      ESCONDER CAMINHO ............. desliga a seta (ela também some sozinha quando você chega)
 	  - A bússola embaixo aponta para o spawner mais perto e mostra a distância.
 	  - "EM USO" marca o veículo que você está usando. O botão "–" (ou o título) encolhe o HUD.
+	  - CONTROLE (videogame), andando a pé: ◀ ▶ escolhem o veículo · ▲ aperta o botão grande
+	    (CHAMAR / MOSTRAR CAMINHO) · ▼ encolhe ou abre o HUD. (Dirigindo, essas setas são do veículo.)
+	  - No CELULAR o HUD fica menor e no canto de cima (longe do analógico).
 	A seta e a coluna de luz só existem no SEU computador (os outros jogadores não veem).
 	Usa o mesmo "fio" do script Spawner (o RemoteEvent "Garagem"): quem confere tudo continua sendo o
 	servidor. O "E  Garagem" dos spawners não muda.
@@ -25,12 +28,16 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local CollectionService = game:GetService("CollectionService")
 local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
+local GuiService = game:GetService("GuiService")
 
 local jogador = Players.LocalPlayer :: Player
 local remoto = ReplicatedStorage:WaitForChild("Garagem") :: RemoteEvent -- (criado pelo script Spawner)
 local moldes = ReplicatedStorage:WaitForChild("Quadriciclos")
 -- A lista dos veículos, o nome/descrição e o veículo 3D dos cartões (o mesmo da GaragemCliente).
 local Vitrine = require(ReplicatedStorage:WaitForChild("Compartilhado"):WaitForChild("Vitrine"))
+-- O tamanho dos HUDs em cada tela (no celular, menor) e se o jogador está no toque ou no controle.
+local Tela = require(ReplicatedStorage:WaitForChild("Compartilhado"):WaitForChild("Tela"))
 
 -- =====================================================================
 -- AJUSTES
@@ -39,6 +46,8 @@ local TAG_SPAWNER = "SpawnerQuadriciclo" -- (a mesma do script Spawner)
 local DISTANCIA_PARA_CHAMAR = 38 -- (studs) perto assim de um spawner, o CHAMAR acende (o servidor aceita até 40)
 local POSICAO = UDim2.new(0, 12, 0.5, 0) -- onde o HUD fica: canto esquerdo, no meio da altura
 local ANCORA = Vector2.new(0, 0.5) -- que ponto do HUD fica na POSICAO (0, 0.5 = o meio da borda esquerda)
+local POSICAO_NO_CELULAR = UDim2.new(0, 12, 0, 8) -- no celular: canto de CIMA, à esquerda (longe do analógico)
+local ANCORA_NO_CELULAR = Vector2.new(0, 0) -- (0, 0 = o canto de cima à esquerda do HUD)
 local LARGURA = 264 -- (pixels) a largura do HUD
 local MAXIMO_DE_CARTOES = 4 -- mais veículos que isso: a lista rola
 local ENCOLHIDO_NO_CELULAR = true -- no celular, o HUD começa encolhido (só o título)
@@ -142,16 +151,18 @@ local function tocar(som: Sound?, volume: number?)
 end
 
 -- O "suporte" posiciona o HUD e diminui ele em telas pequenas; o "hud" é o painel de verdade.
+-- (No celular ele fica no canto de cima: embaixo, à esquerda, fica o analógico.)
+local noCelular = Tela.noToque()
+local posicaoDoHud = if noCelular then POSICAO_NO_CELULAR else POSICAO
 local suporte = Instance.new("Frame")
 suporte.Name = "Suporte"
-suporte.AnchorPoint = ANCORA
-suporte.Position = POSICAO
+suporte.AnchorPoint = if noCelular then ANCORA_NO_CELULAR else ANCORA
+suporte.Position = posicaoDoHud
 suporte.Size = UDim2.fromOffset(LARGURA, 0)
 suporte.AutomaticSize = Enum.AutomaticSize.Y
 suporte.BackgroundTransparency = 1
 suporte.Parent = tela
-local escalaDaTela = Instance.new("UIScale")
-escalaDaTela.Parent = suporte
+Tela.encolher(suporte) -- em telas pequenas (celular), o HUD diminui (e acerta sozinho se a tela girar)
 
 local hud = Instance.new("Frame")
 hud.Name = "HUD"
@@ -307,6 +318,14 @@ aviso.Size = UDim2.new(1, 0, 0, 0)
 aviso.AutomaticSize = Enum.AutomaticSize.Y -- (texto comprido: quebra a linha e o HUD cresce)
 aviso.TextWrapped = true
 
+-- 5) A DICA DO CONTROLE: só aparece para quem está jogando com controle (videogame)
+local dicaDoControle = novoTexto(hud, "", 12, COR_DOURADO, Enum.Font.GothamBold)
+dicaDoControle.LayoutOrder = 5
+dicaDoControle.Size = UDim2.new(1, 0, 0, 0)
+dicaDoControle.AutomaticSize = Enum.AutomaticSize.Y
+dicaDoControle.TextWrapped = true
+dicaDoControle.Visible = false
+
 -- =====================================================================
 -- OS CARTÕES
 -- =====================================================================
@@ -324,6 +343,7 @@ type Cartao = {
 	aceso: boolean, -- o mouse está em cima?
 }
 local cartoes: { [string]: Cartao } = {}
+local ordemDosCartoes: { string } = {} -- os nomes dos moldes, na ordem dos cartões (para as setas do controle)
 local escolhido: string? = nil -- o nome do molde escolhido
 local precisaMontar = true -- true = refazer os cartões
 local temMouse = UserInputService.MouseEnabled -- (no celular não tem "mouse em cima")
@@ -479,8 +499,10 @@ local function montarCartoes()
 		end
 	end
 	local ordenados = Vitrine.ordenar(moldes)
+	table.clear(ordemDosCartoes)
 	for i, molde in ordenados do
 		criarCartao(molde, i)
+		table.insert(ordemDosCartoes, molde.Name)
 	end
 	-- a lista mostra até MAXIMO_DE_CARTOES cartões (72 + 7 de espaço cada, + 10 de margem); o resto rola
 	local visiveis = math.min(#ordenados, MAXIMO_DE_CARTOES)
@@ -684,11 +706,24 @@ local function avisar(texto: string, cor: Color3, segundos: number)
 	mensagemAte = os.clock() + segundos
 end
 
+-- A dica do controle: muda com o HUD aberto ou encolhido (e some sem controle).
+local function atualizarDica()
+	local comControle = Tela.noControle()
+	dicaDoControle.Visible = comControle
+	if comControle then
+		dicaDoControle.Text = if encolhido
+			then "Controle: ▼ abre os veículos"
+			else "Controle: ◀ ▶ escolhe · ▲ aperta o botão · ▼ esconde"
+	end
+end
+UserInputService:GetPropertyChangedSignal("PreferredInput"):Connect(atualizarDica)
+
 local function aplicarEncolhido()
 	lista.Visible = not encolhido
 	botao.Visible = not encolhido
 	linha.Visible = not encolhido
 	botaoEncolher.Text = if encolhido then "+" else "–"
+	atualizarDica()
 end
 
 -- Põe a seta em cima de você, apontando (devagarinho) para o spawner. Roda a cada frame.
@@ -749,11 +784,7 @@ local function atualizarHud()
 		montarCartoes()
 	end
 	local agora = os.clock()
-	-- 1) em telas pequenas (celular), o HUD diminui
-	local camera = workspace.CurrentCamera
-	if camera then
-		escalaDaTela.Scale = math.clamp(camera.ViewportSize.Y / 820, 0.65, 1)
-	end
+	-- 1) (o tamanho do HUD em telas pequenas agora é o módulo Tela que acerta, lá no começo)
 	-- 2) o seu veículo (EM USO) e se você está dirigindo
 	local veiculo = meuVeiculo()
 	nomeEmUso = if veiculo then veiculo.Name else nil
@@ -893,7 +924,8 @@ local function chamar()
 	remoto:FireServer("Spawnar", spawner, nome) -- o mesmo pedido da garagem: o servidor confere e responde
 end
 
-botao.Activated:Connect(function()
+-- O botão grande: CHAMAR, MOSTRAR CAMINHO ou ESCONDER CAMINHO (o clique e o controle usam esta função).
+local function apertarBotaoGrande()
 	if estadoDoBotao == "chamar" then
 		chamar()
 	elseif estadoDoBotao == "mostrar" then
@@ -907,7 +939,67 @@ botao.Activated:Connect(function()
 		tocar(somErro)
 	end
 	atualizarHud()
-end)
+end
+botao.Activated:Connect(apertarBotaoGrande)
+
+-- =====================================================================
+-- (NOVO) CONTROLE (videogame): as setas do direcional, andando a pé
+-- =====================================================================
+--   ◀ ▶ = escolhe o veículo anterior/seguinte · ▲ = aperta o botão grande · ▼ = encolhe/abre o HUD
+-- Dirigindo, essas setas são do veículo (buzina, desvirar e trocar o gancho): as teclas do veículo têm
+-- prioridade maior, então aqui elas só funcionam a pé.
+local ACAO_DO_CONTROLE = "SeletorDeVeiculoControle"
+local PRIORIDADE_DO_CONTROLE = Enum.ContextActionPriority.Medium.Value -- (abaixo das teclas do veículo)
+
+-- Escolhe o veículo do lado (passo = -1 o anterior, 1 o seguinte; depois do último, volta ao primeiro).
+local function escolherOutro(passo: number)
+	if encolhido then
+		encolherOuAbrir() -- (primeiro abre o HUD, para você ver os veículos)
+		return
+	end
+	local total = #ordemDosCartoes
+	if total == 0 then
+		tocar(somErro)
+		return
+	end
+	local atual = table.find(ordemDosCartoes, escolhido or "") or 0
+	local proximo = if atual == 0 then 1 else (atual - 1 + passo) % total + 1
+	local cartao = cartoes[ordemDosCartoes[proximo]]
+	if cartao then
+		escolherCartao(cartao)
+		-- a lista rola até ele (quando tem mais veículos do que cabem)
+		lista.CanvasPosition = Vector2.new(0, math.max(0, (proximo - MAXIMO_DE_CARTOES) * 79))
+	end
+end
+
+local function acaoDoControle(_nome: string, estadoDaEntrada: Enum.UserInputState, entrada: InputObject): Enum.ContextActionResult?
+	if GuiService.SelectedObject ~= nil then
+		return Enum.ContextActionResult.Pass -- (navegando numa tela, como a Garagem: as setas são dela)
+	end
+	if estadoDaEntrada ~= Enum.UserInputState.Begin then
+		return Enum.ContextActionResult.Sink
+	end
+	local tecla = entrada.KeyCode
+	if tecla == Enum.KeyCode.DPadLeft then
+		escolherOutro(-1)
+	elseif tecla == Enum.KeyCode.DPadRight then
+		escolherOutro(1)
+	elseif tecla == Enum.KeyCode.DPadUp then
+		if encolhido then
+			encolherOuAbrir() -- (abre, para você ver o que aconteceu)
+		end
+		botaoApertado = true -- o botão "afunda" um instante, como num clique
+		task.delay(0.15, function()
+			botaoApertado = false
+		end)
+		apertarBotaoGrande()
+	elseif tecla == Enum.KeyCode.DPadDown then
+		encolherOuAbrir()
+	end
+	return Enum.ContextActionResult.Sink
+end
+ContextActionService:BindActionAtPriority(ACAO_DO_CONTROLE, acaoDoControle, false, PRIORIDADE_DO_CONTROLE,
+	Enum.KeyCode.DPadLeft, Enum.KeyCode.DPadRight, Enum.KeyCode.DPadUp, Enum.KeyCode.DPadDown)
 botao.MouseEnter:Connect(function()
 	botaoAceso = temMouse
 	pintarBotao()
@@ -1001,8 +1093,8 @@ end)
 -- COMEÇA! (o HUD entra deslizando da esquerda)
 -- =====================================================================
 aplicarEncolhido()
-suporte.Position = POSICAO - UDim2.fromOffset(LARGURA + 40, 0)
-animar(suporte, 0.6, { Position = POSICAO }, Enum.EasingStyle.Back)
+suporte.Position = posicaoDoHud - UDim2.fromOffset(LARGURA + 40, 0)
+animar(suporte, 0.6, { Position = posicaoDoHud }, Enum.EasingStyle.Back)
 task.spawn(function()
 	while true do
 		-- (xpcall: se der algum erro, ele aparece no Output, mas o HUD continua funcionando)

@@ -29,6 +29,7 @@ local TweenService = game:GetService("TweenService") -- (NOVO) anima o vento sum
 
 local Veiculo = require(script.Parent:WaitForChild("Veiculo"))
 local CameraModulo = require(script.Parent:WaitForChild("Camera")) -- (NOVO) para o tranco na tela (Camera.tremer)
+local Tela = require(ReplicatedStorage:WaitForChild("Compartilhado"):WaitForChild("Tela")) -- (NOVO) HUD menor no celular
 type Quadriciclo = Veiculo.Quadriciclo
 
 local Gancho = {}
@@ -631,6 +632,7 @@ local function criarHudGancho(quad: Quadriciclo)
 	barra.AutomaticSize = Enum.AutomaticSize.XY -- o tamanho vem dos ícones (cresce sozinha)
 	barra.BackgroundTransparency = 1
 	barra.Parent = tela
+	Tela.encolher(barra) -- (NOVO) no celular a barra fica menor (encolhe em volta do meio de baixo)
 	local fila = Instance.new("UIListLayout") -- um ícone ao lado do outro, na ordem 1, 2, 3
 	fila.FillDirection = Enum.FillDirection.Horizontal
 	fila.HorizontalAlignment = Enum.HorizontalAlignment.Center
@@ -1112,7 +1114,7 @@ local function comemorarPerfeito(quad: Quadriciclo)
 	texto.BackgroundTransparency = 1
 	texto.Font = Enum.Font.FredokaOne -- letra arredondada, estilo desenho
 	texto.Text = "PERFEITO!"
-	texto.TextSize = 44
+	texto.TextSize = Tela.tamanho(44) -- (no celular, menor)
 	texto.TextColor3 = Color3.fromRGB(255, 225, 90)
 	texto.Rotation = math.random(-6, 6) -- cada vez um pouquinho torto (fica mais divertido)
 	local contorno = Instance.new("UIStroke") -- a borda escura em volta das letras

@@ -7,7 +7,7 @@
 	=====================================================================
 
 	As mecânicas do CAMINHÃO MONSTRO (o Model com o atributo "Monstro" = true; o arquivo 38 coloca):
-	  SUPER PULO .... segure J (controle: Y · celular: o botão PULO). Enquanto carrega, ele AGACHA nas molas.
+	  SUPER PULO .... segure J (controle: A · celular: o botão PULO). Enquanto carrega, ele AGACHA nas molas.
 	                  Solte: ele pula! (mais carga = mais alto)
 	  MORTAIS ....... no ar, W/S dão MORTAL para frente/trás e A/D dão GIRO DE LADO. No ar ele fica mais
 	                  "leve", para dar tempo de girar.
@@ -23,9 +23,11 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ContextActionService = game:GetService("ContextActionService")
 local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Veiculo = require(script.Parent:WaitForChild("Veiculo")) -- (a "frente" e o "cima" do veículo)
 local CameraModulo = require(script.Parent:WaitForChild("Camera")) -- (o tranco na tela: Camera.tremer)
+local Tela = require(ReplicatedStorage:WaitForChild("Compartilhado"):WaitForChild("Tela")) -- (no celular, textos e barra menores)
 
 local Monstro = {}
 
@@ -34,7 +36,9 @@ local Monstro = {}
 -- =====================================================================
 local SO_NO_MONSTRO = true -- true = só o caminhão monstro · false = o quadriciclo também pula e dá mortal
 local TECLA_DO_PULO = Enum.KeyCode.J
-local BOTAO_DO_CONTROLE = Enum.KeyCode.ButtonY
+-- (CORRIGIDO) Era o Y, mas o Y é a CÂMERA (que tem prioridade maior): o super pulo nunca saía no controle.
+-- O A é o botão de pulo de sempre (no caminhão, ele pula em vez de tirar você do banco; o X continua saindo).
+local BOTAO_DO_CONTROLE = Enum.KeyCode.ButtonA
 local PULO_MINIMO = 35 -- (studs/s) a força do pulo soltando logo
 local PULO_MAXIMO = 85 -- (studs/s) a força do pulo com a carga cheia (85 ≈ uns 28 studs de altura)
 local TEMPO_DE_CARGA = 0.9 -- (s) quanto tempo segurando até a carga encher
@@ -167,7 +171,7 @@ local function anunciar(mensagem: string, cor: Color3)
 	texto.BackgroundTransparency = 1
 	texto.Font = Enum.Font.FredokaOne
 	texto.Text = mensagem
-	texto.TextSize = 46
+	texto.TextSize = Tela.tamanho(46) -- (no celular, menor)
 	texto.TextColor3 = cor
 	texto.Rotation = math.random(-5, 5)
 	local contorno = Instance.new("UIStroke")
@@ -332,11 +336,12 @@ local function criarBarra(): (ScreenGui?, Frame?)
 	tela.Parent = playerGui
 	local fundo = Instance.new("Frame")
 	fundo.AnchorPoint = Vector2.new(0.5, 1)
-	fundo.Position = UDim2.new(0.5, 0, 1, -130)
+	fundo.Position = UDim2.new(0.5, 0, 1, -Tela.tamanho(130))
 	fundo.Size = UDim2.fromOffset(240, 16)
 	fundo.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 	fundo.BackgroundTransparency = 0.25
 	fundo.Parent = tela
+	Tela.encolher(fundo) -- (no celular, a barrinha fica menor)
 	local redondo = Instance.new("UICorner")
 	redondo.CornerRadius = UDim.new(1, 0)
 	redondo.Parent = fundo
@@ -436,7 +441,8 @@ local function ligar(quad: any): Estado?
 		jogador.CameraMinZoomDistance = math.max(ZOOM_MINIMO, jogador.CameraMinZoomDistance)
 	end
 	-- o botão do pulo (no celular aparece um botão na tela)
-	ContextActionService:BindAction("MonstroPulo", acaoDoPulo, true, TECLA_DO_PULO, BOTAO_DO_CONTROLE)
+	-- (prioridade alta, igual às outras teclas do veículo: assim o A não vira o "pulo para fora do banco")
+	ContextActionService:BindActionAtPriority("MonstroPulo", acaoDoPulo, true, Veiculo.PRIORIDADE, TECLA_DO_PULO, BOTAO_DO_CONTROLE)
 	ContextActionService:SetTitle("MonstroPulo", "PULO")
 	local barra, enchimento = criarBarra()
 	return {

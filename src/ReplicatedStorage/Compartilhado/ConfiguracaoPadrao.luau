@@ -105,6 +105,8 @@ local PADRAO = {
 	MasslessDriver = true, -- Personagem sem massa enquanto dirige (não muda o centro de massa).
 	ShowSpeedometer = true, -- Mostra "Velocidade: N" na tela.
 	MobileSteerButtons = false, -- Celular: true = cria botões ESQ/DIR. false = vira pelo analógico da tela.
+	AnalogicoFixoNoCelular = true, -- Celular: true = dirigindo, o analógico fica PARADO no canto de baixo (o clássico).
+	--                                false = o analógico que aparece onde você encosta o dedo (o padrão do Roblox).
 
 	-- =================================================================
 	-- 7) NITRO, FREIO DE MÃO, BUZINA E CÂMERA

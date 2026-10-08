@@ -12,8 +12,11 @@
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Veiculo = require(script.Parent:WaitForChild("Veiculo"))
+-- O tamanho dos HUDs em cada tela (no celular, menor).
+local Tela = require(ReplicatedStorage:WaitForChild("Compartilhado"):WaitForChild("Tela"))
 type Quadriciclo = Veiculo.Quadriciclo
 
 local Velocimetro = {}
@@ -74,6 +77,12 @@ local function criarVelocimetro(quad: Quadriciclo)
 		conexaoBotaoDesvirar = botao.Activated:Connect(function()
 			Veiculo.desvirar(quad) -- clique ou toque faz o mesmo que a tecla R
 		end)
+	end
+	-- (NOVO) No celular o HUD fica menor: cada parte dele encolhe em volta do próprio canto (AnchorPoint).
+	for _, parte in tela:GetChildren() do
+		if parte:IsA("GuiObject") then
+			Tela.encolher(parte)
+		end
 	end
 	quad.tela = tela
 	tela.Enabled = true

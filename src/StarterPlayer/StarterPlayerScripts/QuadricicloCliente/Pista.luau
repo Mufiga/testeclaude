@@ -29,9 +29,11 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
 local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Veiculo = require(script.Parent:WaitForChild("Veiculo")) -- (a "frente" e o "cima" do veículo)
 local CameraModulo = require(script.Parent:WaitForChild("Camera")) -- (o tranco na tela: Camera.tremer)
+local Tela = require(ReplicatedStorage:WaitForChild("Compartilhado"):WaitForChild("Tela")) -- (no celular, textos menores)
 
 local Pista = {}
 
@@ -222,7 +224,7 @@ local function anunciar(mensagem: string, cor: Color3)
 	texto.BackgroundTransparency = 1
 	texto.Font = Enum.Font.FredokaOne
 	texto.Text = mensagem
-	texto.TextSize = 40
+	texto.TextSize = Tela.tamanho(40) -- (no celular, menor)
 	texto.TextColor3 = cor
 	local contorno = Instance.new("UIStroke")
 	contorno.Thickness = 3

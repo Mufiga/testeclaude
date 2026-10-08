@@ -31,6 +31,7 @@
 	              Q gancho (segure para mirar, solte para lançar) · E sai do banco
 	  Controle .. RT acelera · LT freia/ré · analógico esquerdo vira · seta ↓ desvira
 	              R1 nitro · seta ↑ buzina · B freio de mão · Y câmera · L1 gancho · X sai
+	              A super pulo (no caminhão monstro) · a pé, as setas mexem no HUD de veículos
 	  Celular ... botões GÁS, FREIO, GANCHO, NITRO, BUZINA, F. MÃO e CÂMERA
 	              · o analógico da tela vira · o botão de pulo sai do banco
 ]]

@@ -21,6 +21,8 @@ local RunService = game:GetService("RunService")
 
 local jogador = Players.LocalPlayer :: Player
 local aviso = ReplicatedStorage:WaitForChild("AvisoProgresso") :: RemoteEvent
+-- O tamanho dos HUDs em cada tela (no celular, os avisos ficam menores).
+local Tela = require(ReplicatedStorage:WaitForChild("Compartilhado"):WaitForChild("Tela"))
 
 -- =====================================================================
 -- AJUSTES
@@ -46,7 +48,8 @@ tela.Parent = jogador:WaitForChild("PlayerGui")
 
 -- Um texto que "pula" no meio de cima da tela, sobe um pouquinho e some.
 -- altura = a distância do topo da tela (assim dois avisos não ficam um em cima do outro).
-local function mostrarTexto(texto: string, cor: Color3, tamanho: number, altura: number)
+local function mostrarTexto(texto: string, cor: Color3, tamanhoNormal: number, alturaNormal: number)
+	local tamanho, altura = Tela.tamanho(tamanhoNormal), Tela.tamanho(alturaNormal) -- (no celular, menores)
 	local etiqueta = Instance.new("TextLabel")
 	etiqueta.AnchorPoint = Vector2.new(0.5, 0)
 	etiqueta.Position = UDim2.new(0.5, 0, 0, altura)

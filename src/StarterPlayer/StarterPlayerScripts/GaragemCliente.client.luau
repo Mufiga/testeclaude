@@ -11,6 +11,7 @@
 	  - Clique num cartão para escolher e em SPAWNAR: ele aparece no spawner e você já senta.
 	  - Fecha no X ou quando você se afasta do spawner.
 	  - Dirigindo, o aviso "E  Garagem" fica escondido (no quadriciclo, o E serve para sair do banco).
+	  - CONTROLE (videogame): o X abre a garagem; ◀ ▶ (ou o analógico) escolhem; A chama o veículo; B fecha.
 ]]
 
 local Players = game:GetService("Players")
@@ -18,12 +19,16 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
+local ContextActionService = game:GetService("ContextActionService")
+local GuiService = game:GetService("GuiService")
 
 local jogador = Players.LocalPlayer :: Player
 local remoto = ReplicatedStorage:WaitForChild("Garagem") :: RemoteEvent
 local moldes = ReplicatedStorage:WaitForChild("Quadriciclos")
 -- A lista dos veículos, o nome/descrição e o veículo 3D dos cartões (o mesmo do SeletorDeVeiculo).
 local Vitrine = require(ReplicatedStorage:WaitForChild("Compartilhado"):WaitForChild("Vitrine"))
+-- Se o jogador está jogando com controle (videogame).
+local Tela = require(ReplicatedStorage:WaitForChild("Compartilhado"):WaitForChild("Tela"))
 
 -- =====================================================================
 -- AJUSTES
@@ -99,6 +104,12 @@ limites.MinSize = Vector2.new(330, 300)
 limites.MaxSize = Vector2.new(920, 540)
 limites.Parent = painel
 local escalaDoPainel = Instance.new("UIScale") -- (para a animação de abrir)
+-- CONTROLE: a "seleção" do controle (o contorno que pula de botão em botão) não sai de dentro do painel.
+painel.SelectionGroup = true
+painel.SelectionBehaviorUp = Enum.SelectionBehavior.Stop
+painel.SelectionBehaviorDown = Enum.SelectionBehavior.Stop
+painel.SelectionBehaviorLeft = Enum.SelectionBehavior.Stop
+painel.SelectionBehaviorRight = Enum.SelectionBehavior.Stop
 escalaDoPainel.Parent = painel
 
 local titulo = novoTexto(painel, "GARAGEM", 30, Color3.new(1, 1, 1), Enum.Font.GothamBlack)
@@ -132,6 +143,7 @@ lista.AutomaticCanvasSize = Enum.AutomaticSize.X -- a largura cresce com os cart
 lista.CanvasSize = UDim2.fromScale(0, 1) -- a altura é a da própria lista
 lista.ScrollBarThickness = 6
 lista.ScrollBarImageColor3 = COR_DESTAQUE
+lista.Selectable = false -- (o controle seleciona os cartões, não a lista)
 lista.Parent = painel
 local fila = Instance.new("UIListLayout")
 fila.FillDirection = Enum.FillDirection.Horizontal
@@ -170,11 +182,12 @@ estado.TextWrapped = true
 -- OS CARTÕES
 -- =====================================================================
 type Vitrine = { camera: Camera, inicio: CFrame }
-type Cartao = { contorno: UIStroke, escala: UIScale }
+type Cartao = { contorno: UIStroke, escala: UIScale, botao: TextButton }
 local vitrines: { Vitrine } = {} -- as câmeras dos cartões (giram em volta dos quadriciclos)
 local cartoes: { [string]: Cartao } = {}
 local escolhido: string? = nil -- o nome do molde escolhido
 local precisaMontar = true -- true = refazer os cartões na próxima vez que abrir
+local pedirVeiculo: () -> () -- (a função vem mais embaixo; aqui só avisamos que ela existe)
 
 -- Coloca uma CÓPIA do quadriciclo dentro do ViewportFrame, com uma câmera olhando para ele.
 local function montarVitrine(viewport: ViewportFrame, molde: Model)
@@ -249,10 +262,17 @@ local function criarCartao(molde: Model, ordem: number)
 	clicar.Text = ""
 	clicar.ZIndex = 5
 	clicar.Parent = cartao
-	clicar.Activated:Connect(function()
+	clicar.Activated:Connect(function(entrada: InputObject, _cliques: number)
+		selecionar(molde.Name)
+		if string.sub(entrada.UserInputType.Name, 1, 7) == "Gamepad" then
+			pedirVeiculo() -- CONTROLE: o A no cartão já chama este veículo
+		end
+	end)
+	-- CONTROLE: o contorno de seleção chegou neste cartão (setas ou analógico) = ele fica escolhido.
+	clicar.SelectionGained:Connect(function()
 		selecionar(molde.Name)
 	end)
-	cartoes[molde.Name] = { contorno = contorno, escala = escala }
+	cartoes[molde.Name] = { contorno = contorno, escala = escala, botao = clicar }
 end
 
 -- (Re)faz todos os cartões, na ordem do atributo "Ordem" (a mesma ordem do HUD de veículos).
@@ -295,6 +315,8 @@ local function pontoDoSpawner(spawner: Instance): BasePart?
 	return if spawner:IsA("BasePart") then spawner else nil
 end
 
+local ACAO_FECHAR_NO_CONTROLE = "GaragemFecharControle"
+
 local function fecharGaragem()
 	spawnerAtual = nil
 	tela.Enabled = false
@@ -303,7 +325,41 @@ local function fecharGaragem()
 		conexao:Disconnect()
 	end
 	conexaoDaTela = nil
+	ContextActionService:UnbindAction(ACAO_FECHAR_NO_CONTROLE)
+	local selecionado = GuiService.SelectedObject
+	if selecionado and selecionado:IsDescendantOf(tela) then
+		GuiService.SelectedObject = nil -- (o controle volta a mexer o personagem)
+	end
 end
+
+-- CONTROLE: a garagem abriu com o controle? A seleção começa no cartão escolhido e o B fecha.
+local function prepararControle()
+	if not Tela.noControle() then
+		subtitulo.Text = "Escolha seu quadriciclo"
+		return
+	end
+	subtitulo.Text = "◀ ▶ escolhe  ·  A chama  ·  B fecha"
+	ContextActionService:BindActionAtPriority(ACAO_FECHAR_NO_CONTROLE, function(_nome: string, estadoDaEntrada: Enum.UserInputState, _entrada: InputObject): Enum.ContextActionResult?
+		if estadoDaEntrada == Enum.UserInputState.Begin then
+			fecharGaragem()
+		end
+		return Enum.ContextActionResult.Sink
+	end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.ButtonB)
+	task.defer(function() -- (espera a tela aparecer: só dá para selecionar o que está visível)
+		local nome = escolhido
+		local cartao = if nome then cartoes[nome] else nil
+		if spawnerAtual ~= nil then
+			GuiService.SelectedObject = if cartao then cartao.botao else botaoSpawnar
+		end
+	end)
+end
+
+-- CONTROLE: o B (ou o botão Select) também tira a seleção da tela: se isso acontecer, a garagem fecha.
+GuiService:GetPropertyChangedSignal("SelectedObject"):Connect(function()
+	if spawnerAtual ~= nil and GuiService.SelectedObject == nil and Tela.noControle() then
+		fecharGaragem()
+	end
+end)
 
 local function abrirGaragem(spawner: Instance)
 	spawnerAtual = spawner
@@ -317,6 +373,7 @@ local function abrirGaragem(spawner: Instance)
 		estado.Text = "Nenhum quadriciclo na pasta ReplicatedStorage > Quadriciclos."
 	end
 	tela.Enabled = true
+	prepararControle()
 	escalaDoPainel.Scale = 0.85 -- abre "pulando"
 	TweenService:Create(escalaDoPainel, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 	if conexaoDaTela == nil then
@@ -338,8 +395,8 @@ local function abrirGaragem(spawner: Instance)
 	end
 end
 
-botaoFechar.Activated:Connect(fecharGaragem)
-botaoSpawnar.Activated:Connect(function()
+-- Pede o veículo escolhido ao servidor (o botão SPAWNAR e o A do controle num cartão).
+pedirVeiculo = function()
 	local spawner = spawnerAtual
 	local nome = escolhido
 	if spawner == nil or nome == nil then
@@ -347,7 +404,10 @@ botaoSpawnar.Activated:Connect(function()
 	end
 	estado.Text = "Chamando o quadriciclo..."
 	remoto:FireServer("Spawnar", spawner, nome) -- o servidor confere e responde "Pronto" ou um "Aviso"
-end)
+end
+
+botaoFechar.Activated:Connect(fecharGaragem)
+botaoSpawnar.Activated:Connect(pedirVeiculo)
 
 remoto.OnClientEvent:Connect(function(acao: unknown, dado: unknown)
 	if acao == "Abrir" and typeof(dado) == "Instance" then

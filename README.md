@@ -9,6 +9,63 @@ colocar no seu jogo**.
 
 ---
 
+## Atualização: celular e controle
+
+Se você **já colocou** a primeira versão no seu jogo, só precisa fazer o que está nesta seção.
+
+**O que muda:**
+- **HUD menor no celular.** Os HUDs (velocímetro, barra do gancho, barra do super pulo, os textos
+  grandes como "PERFEITO!" e "CHECKPOINT 2!", e o HUD de veículos) ficam **menores em telas pequenas**.
+  No computador fica tudo igual (só diminui um pouco se a janela for bem pequena). Quem decide o tamanho é um módulo novo, o **Tela**: ele também acerta
+  sozinho quando o celular gira ou a janela muda de tamanho.
+- **Controle (videogame) na Garagem.** Antes não dava para escolher nem chamar um veículo com o controle.
+  Agora: **X** abre a garagem (como já era) › **◀ ▶** (ou o analógico) escolhem o cartão ›
+  **A** chama o veículo › **B** fecha.
+- **Controle no HUD de veículos** (o do canto da tela), andando a pé: **◀ ▶** escolhem o veículo,
+  **▲** aperta o botão grande (chamar), **▼** esconde/abre o HUD. Uma dica aparece no HUD quando você
+  está jogando com controle.
+- **Super pulo do caminhão monstro no controle agora é o A.** Antes era o **Y**, mas o Y já trocava a
+  câmera, então **o super pulo nunca funcionava no controle**. (Para sair do veículo: **X**.)
+- **Analógico parado no celular enquanto dirige.** Dirigindo, o analógico do celular vira o
+  **clássico, fixo no canto de baixo**, em vez de aparecer onde o dedo encosta. Quando você sai do
+  veículo, volta a ser o de antes. Dá para desligar em `ConfiguracaoPadrao`:
+  `AnalogicoFixoNoCelular = false`.
+
+**Passo a passo no Studio:**
+
+1. Em **ReplicatedStorage › Compartilhado**, **crie** um ModuleScript:
+   - `Tela` ← [src/ReplicatedStorage/Compartilhado/Tela.luau](src/ReplicatedStorage/Compartilhado/Tela.luau)
+2. **Substitua** (apague tudo e cole o novo):
+   - ReplicatedStorage › Compartilhado › `ConfiguracaoPadrao` ← [ConfiguracaoPadrao.luau](src/ReplicatedStorage/Compartilhado/ConfiguracaoPadrao.luau)
+   - ServerScriptService › QuadricicloServidor › `Motorista` ← [Motorista.luau](src/ServerScriptService/QuadricicloServidor/Motorista.luau)
+   - StarterPlayerScripts › `QuadricicloCliente` (o LocalScript) ← [init.client.luau](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/init.client.luau)
+   - StarterPlayerScripts › QuadricicloCliente › `Velocimetro` ← [Velocimetro.luau](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Velocimetro.luau)
+   - StarterPlayerScripts › QuadricicloCliente › `Gancho` ← [Gancho.luau](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Gancho.luau)
+   - StarterPlayerScripts › QuadricicloCliente › `Monstro` ← [Monstro.luau](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Monstro.luau)
+   - StarterPlayerScripts › QuadricicloCliente › `Pista` ← [Pista.luau](src/StarterPlayer/StarterPlayerScripts/QuadricicloCliente/Pista.luau)
+   - StarterPlayerScripts › `AvisosProgresso` ← [AvisosProgresso.client.luau](src/StarterPlayer/StarterPlayerScripts/AvisosProgresso.client.luau)
+   - StarterPlayerScripts › `GaragemCliente` ← [GaragemCliente.client.luau](src/StarterPlayer/StarterPlayerScripts/GaragemCliente.client.luau)
+   - StarterPlayerScripts › `SeletorDeVeiculo` ← [SeletorDeVeiculo.client.luau](src/StarterPlayer/StarterPlayerScripts/SeletorDeVeiculo.client.luau)
+3. **Teste:**
+   - **Celular:** *Test › Device* (o emulador do Studio), escolha um celular (ex.: iPhone) **deitado** e
+     dê Play. Os HUDs devem estar menores. Sente num veículo: o analógico fica parado no canto de baixo
+     à esquerda; saia: ele volta ao normal.
+   - **Controle:** ligue um controle (Xbox/PlayStation) no computador e dê Play. Perto do spawner, **X**
+     abre a garagem; ◀ ▶ trocam; **A** chama; **B** fecha. A pé, longe do spawner, ◀ ▶ / ▲ / ▼ mexem no
+     HUD de veículos. No caminhão monstro, segure **A** para o super pulo.
+
+**Quer os HUDs ainda menores (ou maiores) no celular?** No módulo `Tela`, mude
+`TAMANHO_TELA_PEQUENA` (hoje `0.65` = 65% do tamanho do computador). Vale para todos os HUDs de uma vez.
+
+**Quer o analógico parado também andando a pé?** No Studio: **StarterPlayer** › Propriedades ›
+`DevTouchMovementMode` = **Thumbstick**. (Os scripts só mudam isso enquanto a pessoa dirige.)
+
+> **Atenção (celular):** o Roblox mostra no máximo **7 botões de toque** de ações. Dirigindo já temos
+> 7 (Gás, Freio, Gancho, Nitro, Buzina, Freio de mão, Câmera), então o botão **PULO** do caminhão
+> monstro **não aparece no celular**. Se quiser, eu faço um botão próprio de super pulo para o celular.
+
+---
+
 ## Resumo rápido
 
 | Antes | Agora |
