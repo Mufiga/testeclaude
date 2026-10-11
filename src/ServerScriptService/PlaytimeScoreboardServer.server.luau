@@ -37,7 +37,8 @@ remote.Parent = ReplicatedStorage
 -- DataStores (com degradacao elegante se a API estiver desligada)
 --------------------------------------------------------------------------
 
-local playerStore, rankStore
+local playerStore: DataStore
+local rankStore: OrderedDataStore
 local dataOk = true
 
 local function disableData(err: any)
@@ -65,9 +66,7 @@ task.spawn(function()
 	if not dataOk then
 		return
 	end
-	local ok, err = pcall(function()
-		return playerStore:GetAsync("__probe")
-	end)
+	local ok, err = pcall(playerStore.GetAsync, playerStore, "__probe")
 	if not ok then
 		local msg = string.lower(tostring(err))
 		if string.find(msg, "403") or string.find(msg, "not allowed") or string.find(msg, "studio") then
@@ -76,9 +75,9 @@ task.spawn(function()
 	end
 end)
 
-local function retry(fn, tries: number?)
+local function retry(fn: () -> any, tries: number?): (boolean, any)
 	local attempts = tries or 3
-	local lastErr
+	local lastErr: any = nil
 	for i = 1, attempts do
 		local ok, res = pcall(fn)
 		if ok then
@@ -96,13 +95,28 @@ end
 -- Sessoes
 --------------------------------------------------------------------------
 
--- [Player] = { base = segundos ja salvos, joined = os.time(), loaded = bool }
-local sessions = {}
+-- Uma sessao em andamento. O tempo total nao fica guardado aqui: e calculado
+-- na hora em totalFor(), somando o que ja estava salvo com o tempo da sessao.
+type Session = {
+	base: number,   -- segundos ja salvos no DataStore
+	joined: number, -- os.time() de quando entrou
+	loaded: boolean,
+}
 
--- [userId] = { name = string, display = string }
-local nameCache = {}
+-- Uma linha do ranking, do jeito que vai para o cliente.
+type Entry = {
+	userId: number,
+	seconds: number,
+	online: boolean,
+	name: string?,
+	display: string?,
+}
 
-local cachedList = {}
+type UserName = { name: string, display: string }
+
+local sessions: { [Player]: Session } = {}
+local nameCache: { [number]: UserName } = {}
+local cachedList: { Entry } = {}
 
 local function totalFor(player: Player): number
 	local s = sessions[player]
@@ -155,7 +169,7 @@ end
 --------------------------------------------------------------------------
 
 local function resolveNames(ids: { number })
-	local missing = {}
+	local missing: { number } = {}
 	for _, id in ids do
 		if not nameCache[id] then
 			table.insert(missing, id)
@@ -164,9 +178,7 @@ local function resolveNames(ids: { number })
 	if #missing == 0 then
 		return
 	end
-	local ok, infos = pcall(function()
-		return UserService:GetUserInfosByUserIdsAsync(missing)
-	end)
+	local ok, infos = pcall(UserService.GetUserInfosByUserIdsAsync, UserService, missing)
 	if ok and infos then
 		for _, info in infos do
 			nameCache[info.Id] = { name = info.Username, display = info.DisplayName }
@@ -180,7 +192,7 @@ end
 --------------------------------------------------------------------------
 
 local function refreshBoard()
-	local candidates = {}
+	local candidates: { [number]: number } = {}
 
 	if dataOk then
 		local ok, pages = retry(function()
@@ -202,7 +214,7 @@ local function refreshBoard()
 	end
 
 	-- Quem esta online entra com o tempo ao vivo, mesmo antes do proximo save.
-	local online = {}
+	local online: { [number]: boolean } = {}
 	for _, player in Players:GetPlayers() do
 		local s = sessions[player]
 		if s and s.loaded then
@@ -211,16 +223,16 @@ local function refreshBoard()
 		end
 	end
 
-	local list = {}
+	local list: { Entry } = {}
 	for id, secs in candidates do
 		table.insert(list, {
 			userId = id,
 			seconds = secs,
-			online = online[id] or nil,
+			online = online[id] or false,
 		})
 	end
 
-	table.sort(list, function(a, b)
+	table.sort(list, function(a: Entry, b: Entry)
 		if a.seconds == b.seconds then
 			return a.userId < b.userId
 		end
@@ -231,7 +243,7 @@ local function refreshBoard()
 		table.remove(list)
 	end
 
-	local ids = {}
+	local ids: { number } = {}
 	for _, entry in list do
 		table.insert(ids, entry.userId)
 	end
@@ -284,7 +296,7 @@ local function savePlayer(player: Player)
 
 	local key = Config.KeyPrefix .. player.UserId
 	local ok, err = pcall(function()
-		playerStore:UpdateAsync(key, function(old)
+		playerStore:UpdateAsync(key, function(old): number?
 			local previous = tonumber(old) or 0
 			if total <= previous then
 				return nil -- cancela a escrita, nao ha nada novo

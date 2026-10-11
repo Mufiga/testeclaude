@@ -29,17 +29,51 @@ local ROWS = math.max(1, Config.TopCount)
 local GATE = Config.MaxRenderDistance > 0 and Config.MaxRenderDistance or math.huge
 
 --------------------------------------------------------------------------
+-- Tipos
+--------------------------------------------------------------------------
+
+-- Uma linha do ranking, do jeito que o servidor manda.
+export type Entry = {
+	userId: number,
+	name: string?,
+	display: string?,
+	seconds: number,
+	online: boolean?,
+}
+
+-- Os rotulos de uma linha ja montada na tela.
+export type Row = {
+	frame: Frame,
+	badge: Frame,
+	badgeLabel: TextLabel,
+	avatar: ImageLabel?,
+	name: TextLabel,
+	time: TextLabel,
+	userId: number, -- -1 = nunca desenhada, 0 = vaga vazia
+}
+
+export type Board = {
+	adornee: BasePart,
+	gui: SurfaceGui,
+	rows: { Row },
+	footerValue: TextLabel?,
+}
+
+--------------------------------------------------------------------------
 -- Estado recebido do servidor
 --------------------------------------------------------------------------
 
-local state = {
+local state: {
+	entries: { Entry },
+	yourSeconds: number?,
+	receivedAt: number,
+} = {
 	entries = {},
 	yourSeconds = nil,
 	receivedAt = os.clock(),
 }
 
--- [Part] = board
-local boards = {}
+local boards: { [BasePart]: Board } = {}
 
 --------------------------------------------------------------------------
 -- Helpers de interface
@@ -115,7 +149,7 @@ end
 -- Montagem da placa (roda uma vez por placa)
 --------------------------------------------------------------------------
 
-local function buildBoard(adornee: BasePart)
+local function buildBoard(adornee: BasePart): Board
 	local gui = Instance.new("SurfaceGui")
 	gui.Name = "PlaytimeBoardGui"
 	gui.Adornee = adornee
@@ -201,7 +235,7 @@ local function buildBoard(adornee: BasePart)
 	list.Padding = UDim.new(rowGap, 0)
 	list.Parent = rowsFrame
 
-	local rows = table.create(ROWS)
+	local rows: { Row } = {}
 
 	for i = 1, ROWS do
 		local row = Instance.new("Frame")
@@ -288,7 +322,7 @@ local function buildBoard(adornee: BasePart)
 	end
 
 	------------------------------------------------------------------ rodape
-	local footerValue
+	local footerValue: TextLabel? = nil
 	if showFooter then
 		local footer = Instance.new("Frame")
 		footer.Name = "Footer"
@@ -331,7 +365,7 @@ end
 -- Desenho (so troca texto/cor, nunca cria instancias)
 --------------------------------------------------------------------------
 
-local function render(board)
+local function render(board: Board)
 	local elapsed = os.clock() - state.receivedAt
 	local entries = state.entries
 
@@ -397,7 +431,10 @@ end
 --------------------------------------------------------------------------
 
 local function addBoard(instance: Instance)
-	if not instance:IsA("BasePart") or boards[instance] then
+	if not instance:IsA("BasePart") then
+		return
+	end
+	if boards[instance] then
 		return
 	end
 	local board = buildBoard(instance)
@@ -406,6 +443,9 @@ local function addBoard(instance: Instance)
 end
 
 local function removeBoard(instance: Instance)
+	if not instance:IsA("BasePart") then
+		return
+	end
 	local board = boards[instance]
 	if board then
 		board.gui:Destroy()

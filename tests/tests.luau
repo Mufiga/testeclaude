@@ -84,6 +84,13 @@ end
 check("Carlos aparece no top", carlosEntry ~= nil)
 check("Carlos com tempo ao vivo", carlosEntry and carlosEntry.seconds == totalFor(carlos), carlosEntry and carlosEntry.seconds)
 check("Carlos marcado online", carlosEntry and carlosEntry.online == true)
+-- online e sempre booleano (nunca ausente): com "or nil" o tipo inferido
+-- virava o literal `true` e o analisador do Studio reclamava.
+local offline
+for _, e in cachedList do
+	if not e.online then offline = e break end
+end
+check("offline marcado como false, nao ausente", offline ~= nil and offline.online == false, offline and tostring(offline.online))
 check("Bia usa o tempo ao vivo, nao o 1000 salvo", biaEntry and biaEntry.seconds == totalFor(bia), biaEntry and biaEntry.seconds)
 
 print("\n== o que chega no cliente ==")
