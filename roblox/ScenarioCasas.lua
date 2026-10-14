@@ -4,39 +4,49 @@
 	A ideia é a mesma de um backlot de estúdio: o que o jogador vê é
 	volume de verdade (tem profundidade, pega luz, projeta silhueta),
 	mas é casca. Nada de interior, nada de porta que abre, nada de
-	MeshPart. Só caixas e cunhas, montadas em três faixas de distância:
+	MeshPart. Só caixas e cunhas.
 
-	  VOLUME  (perto)  casa com casca de meia-profundidade, janelas,
-	                   porta, chaminé. ~9 a 12 partes.
-	  CAIXA   (meio)   mesma silhueta, sem detalhe, profundidade menor
-	                   e cor já puxada pra névoa. ~4 a 6 partes.
-	  PLACA   (longe)  recorte de cenário: 3 partes finas viradas pro
-	                   ponto de foco. Lê como prédio, custa quase nada.
+	O cenário ACOMPANHA A PISTA: você marca o caminho offroad com uns
+	pontos e as casas nascem ao longo dele, dos dois lados, sempre
+	viradas pra trilha. Cada faixa é uma distância lateral do caminho:
+
+	  VOLUME  (beira da pista)  casa com casca de meia-profundidade,
+	                   janelas, porta, chaminé. ~9 a 12 partes.
+	  CAIXA   (encosta)  mesma silhueta, sem detalhe, profundidade
+	                   menor e cor já puxada pra névoa. ~4 a 6 partes.
+	  PLACA   (horizonte)  recorte de cenário: 3 partes finas viradas
+	                   pra pista. Lê como prédio, custa quase nada.
 
 	Os dois truques que fazem isso parecer caro:
 
 	  1. Perspectiva aérea. Toda peça tem a cor interpolada na direção
 	     da cor da atmosfera conforme a distância do foco. É o que o
 	     olho usa pra julgar profundidade — mais do que polígono.
-	  2. Perspectiva forçada. As camadas distantes são construídas
-	     menores do que seriam de verdade e todas apontam pro ponto de
-	     onde o jogador olha. O vale parece ter o dobro do tamanho.
+	  2. Perspectiva forçada. As faixas distantes são construídas
+	     menores do que seriam de verdade e todas apontam pra pista.
+	     O vale parece ter o dobro do tamanho.
 
 	Tudo é Anchored, CastShadow=false, CanQuery=false, CanTouch=false,
 	SmoothPlastic, e cada casa tem no máximo UM collider (invisível) em
 	vez de nove partes colidíveis.
 
-	USO
-	---
-	ServerScriptService
-	  └ ScenarioCasas      (ModuleScript — este arquivo)
-	  └ MontarCenario      (Script — veja ExemploUso.server.lua)
+	USO — 3 passos na Command Bar do Studio
+	---------------------------------------
+	1) Marque a trilha: voe a câmera seguindo o caminho offroad e vá
+	   repetindo (seta pra cima + Enter):
 
-		local Cenario = require(script.Parent.ScenarioCasas)
-		Cenario.Construir({
-			Foco = Vector3.new(0, 25, 0),       -- de onde o jogador olha
-			Direcao = Vector3.new(0, 0, -1),    -- pra onde o cenário se abre
-		})
+	     require(game.ServerScriptService.ScenarioCasas).MarcarPonto()
+
+	2) Construa o cenário inteiro em volta dela:
+
+	     require(game.ServerScriptService.ScenarioCasas).AoLongoDaPista()
+
+	3) Ajuste na mão onde quiser. Mira a câmera e:
+
+	     require(game.ServerScriptService.ScenarioCasas).Aqui()
+
+	Rodar o passo 2 de novo apaga e refaz. Trocar a Semente muda a vila
+	inteira. Veja ExemploUso.server.lua pro arquivo que roda sozinho.
 ]]
 
 local ScenarioCasas = {}
@@ -494,7 +504,9 @@ local function posicionar(cfg, camada, rng, indice, direcao, filtro)
 		(pos - cfg.Foco).Magnitude
 end
 
---- Constrói o cenário inteiro. Devolve o Model raiz.
+--- MODO SECUNDÁRIO (leque): espalha em volta de um ponto de vista só,
+--  sem pista nenhuma. Serve pra lobby, menu, fundo de tela. Pra cenário
+--  de pista use AoLongoDaPista(). Devolve o Model raiz.
 function ScenarioCasas.Construir(opcoes)
 	local cfg = mesclar(PADRAO, opcoes)
 	local pai = cfg.Pai or workspace
@@ -615,6 +627,632 @@ function ScenarioCasas.AplicarAtmosfera(opcoes)
 	Lighting.FogEnd = opcoes.FimDaNevoa or 4000
 	return atm
 end
+
+----------------------------------------------------------------------
+-- 8. PISTA — o modo principal
+--    Em vez de espalhar em leque, o cenário segue o caminho offroad.
+--    Cada FAIXA é uma distância lateral da pista; as casas nascem de
+--    tantos em tantos studs ao longo dela, sempre viradas pro caminho.
+--    A névoa passa a ser medida pela distância lateral: casa na beira
+--    sai com a cor cheia, casa a 700 studs sai quase só silhueta.
+----------------------------------------------------------------------
+local FAIXA_PADRAO = {
+	Nome = "Faixa",
+	Tipo = "VOLUME",              -- VOLUME | CAIXA | PLACA
+	Recuo = 60,                   -- distância do eixo da pista
+	VariacaoRecuo = 25,
+	Espacamento = 90,             -- a cada quantos studs de pista nasce um lugar
+	Densidade = 0.55,             -- chance desse lugar virar casa
+	ChanceArvore = 0.30,          -- chance de virar árvore (nos lugares que sobraram)
+	Lados = "ambos",              -- "ambos" | "esquerda" | "direita"
+	Altura = 0,                   -- offset vertical depois de pousar
+	VariacaoAltura = 0,
+	Escala = 1,
+	VariacaoEscala = 0.18,
+	Profundidade = 0.55,          -- 1 = casa real / 0.035 = placa
+	GiroAleatorio = 22,           -- graus de desalinho
+	DistanciaMinima = 26,         -- não deixa duas construções se encavalarem
+	Detalhe = true,
+	Colidir = false,
+	Encaixar = true,              -- raycast pra pousar no terreno
+	Sombra = false,
+	Material = Enum.Material.SmoothPlastic,
+	Arquetipos = { "Chale", "Sobrado", "Celeiro", "Capela" },
+}
+
+local FAIXAS_PADRAO = {
+	-- beira da trilha: o jogador passa raspando, então tem detalhe e colisão
+	{
+		Nome = "Beira", Tipo = "VOLUME",
+		Recuo = 55, VariacaoRecuo = 26, Espacamento = 85,
+		Densidade = 0.50, ChanceArvore = 0.35,
+		Escala = 1.0, Profundidade = 0.55,
+		Colidir = true, Detalhe = true, DistanciaMinima = 30,
+	},
+	-- encosta: trepadas no barranco, sem detalhe, já puxando pro azul
+	{
+		Nome = "Encosta", Tipo = "CAIXA",
+		Recuo = 190, VariacaoRecuo = 85, Espacamento = 70,
+		Densidade = 0.60, ChanceArvore = 0.30,
+		Altura = 12, VariacaoAltura = 25,
+		Escala = 0.85, Profundidade = 0.38,
+		Detalhe = false, DistanciaMinima = 24,
+	},
+	-- horizonte: recorte de backlot no alto, flutuando acima do barranco
+	{
+		Nome = "Horizonte", Tipo = "PLACA",
+		Recuo = 650, VariacaoRecuo = 230, Espacamento = 95,
+		Densidade = 0.80, ChanceArvore = 0,
+		Altura = 130, VariacaoAltura = 70,
+		Escala = 0.60, Profundidade = 0.035,
+		Encaixar = false, GiroAleatorio = 6, DistanciaMinima = 14,
+	},
+}
+
+local function numeroNoNome(nome)
+	local n = string.match(nome, "%d+")
+	if n then return tonumber(n) end
+	return nil
+end
+
+-- Aceita: Folder/Model de Parts, lista de Vector3, lista de Parts, lista de CFrames.
+local function coletarPontos(origem)
+	local pontos = {}
+	if typeof(origem) == "Instance" then
+		local partes = {}
+		for _, filho in ipairs(origem:GetDescendants()) do
+			if filho:IsA("BasePart") then
+				table.insert(partes, filho)
+			end
+		end
+		-- ordem pelo número no nome (001, 002, ...), senão alfabética
+		table.sort(partes, function(a, b)
+			local na, nb = numeroNoNome(a.Name), numeroNoNome(b.Name)
+			if na and nb and na ~= nb then
+				return na < nb
+			end
+			return a.Name < b.Name
+		end)
+		for _, parte in ipairs(partes) do
+			table.insert(pontos, parte.Position)
+		end
+	elseif type(origem) == "table" then
+		for _, item in ipairs(origem) do
+			if typeof(item) == "Vector3" then
+				table.insert(pontos, item)
+			elseif typeof(item) == "CFrame" then
+				table.insert(pontos, item.Position)
+			elseif typeof(item) == "Instance" and item:IsA("BasePart") then
+				table.insert(pontos, item.Position)
+			end
+		end
+	end
+	return pontos
+end
+
+-- Catmull-Rom: a curva passa EM CIMA dos pontos que você marcou.
+local function catmull(p0, p1, p2, p3, t)
+	local t2 = t * t
+	local t3 = t2 * t
+	return (p1 * 2
+		+ (p2 - p0) * t
+		+ (p0 * 2 - p1 * 5 + p2 * 4 - p3) * t2
+		+ (p1 * 3 - p0 - p2 * 3 + p3) * t3) * 0.5
+end
+
+-- Devolve a pista picada em amostras, cada uma com posição, tangente
+-- horizontal e distância acumulada desde o começo.
+local function amostrarCaminho(pontos, fechado, subdivisoes)
+	subdivisoes = math.max(2, subdivisoes or 8)
+	local n = #pontos
+	local caminho = {}
+	if n < 2 then return caminho end
+
+	local bruto = {}
+	local ultimo = fechado and n or (n - 1)
+	for i = 1, ultimo do
+		local p0, p1, p2, p3
+		if fechado then
+			p0 = pontos[((i - 2) % n) + 1]
+			p1 = pontos[i]
+			p2 = pontos[(i % n) + 1]
+			p3 = pontos[((i + 1) % n) + 1]
+		else
+			p0 = pontos[math.max(1, i - 1)]
+			p1 = pontos[i]
+			p2 = pontos[math.min(n, i + 1)]
+			p3 = pontos[math.min(n, i + 2)]
+		end
+		for s = 0, subdivisoes - 1 do
+			table.insert(bruto, catmull(p0, p1, p2, p3, s / subdivisoes))
+		end
+	end
+	if not fechado then
+		table.insert(bruto, pontos[n])
+	end
+
+	local total = #bruto
+	for i, p in ipairs(bruto) do
+		local anterior = bruto[i - 1]
+		local proximo = bruto[i + 1]
+		if not anterior then
+			anterior = fechado and bruto[total] or p
+		end
+		if not proximo then
+			proximo = fechado and bruto[1] or p
+		end
+		local tang = proximo - anterior
+		tang = Vector3.new(tang.X, 0, tang.Z)      -- o lado é sempre horizontal
+		if tang.Magnitude > 0.001 then
+			tang = tang.Unit
+		else
+			tang = Vector3.new(0, 0, -1)
+		end
+		local s = 0
+		if i > 1 then
+			s = caminho[i - 1].s + (p - bruto[i - 1]).Magnitude
+		end
+		caminho[i] = { p = p, t = tang, s = s }
+	end
+	return caminho
+end
+
+-- A pista em uso. Quem define: DefinirPista() ou AoLongoDaPista().
+-- É ela que faz as casas soltas virarem pro caminho sozinhas.
+local pistaAtual = nil
+
+local function maisProximoNaPista(pos)
+	if not pistaAtual then return nil, nil end
+	local melhor, melhorDist
+	local plano = Vector3.new(pos.X, 0, pos.Z)
+	for _, amostra in ipairs(pistaAtual) do
+		local d = (Vector3.new(amostra.p.X, 0, amostra.p.Z) - plano).Magnitude
+		if (not melhorDist) or d < melhorDist then
+			melhor, melhorDist = amostra, d
+		end
+	end
+	return melhor, melhorDist
+end
+
+local function ladoDireito(tangente)
+	local lado = tangente:Cross(Vector3.new(0, 1, 0))
+	if lado.Magnitude > 0.001 then
+		return lado.Unit
+	end
+	return Vector3.new(1, 0, 0)
+end
+
+local function pousar(pos, alturaDaPista, encaixar, cfg, filtro)
+	if encaixar then
+		local hit = workspace:Raycast(
+			pos + Vector3.new(0, cfg.AlturaDoRaio, 0),
+			Vector3.new(0, -cfg.AlturaDoRaio * 3, 0),
+			filtro)
+		if hit then
+			return Vector3.new(pos.X, hit.Position.Y - 0.6, pos.Z)
+		end
+	end
+	return Vector3.new(pos.X, alturaDaPista, pos.Z)
+end
+
+--- Registra a pista sem construir nada. Depois disso, qualquer casa
+--  solta que você colocar já nasce virada pro caminho e com a névoa
+--  certa pra distância dela.
+function ScenarioCasas.DefinirPista(origem, fechado, subdivisoes)
+	local pontos = coletarPontos(origem)
+	if #pontos < 2 then
+		warn("[ScenarioCasas] A pista precisa de pelo menos 2 pontos; achei " .. #pontos .. ".")
+		pistaAtual = nil
+		return 0
+	end
+	pistaAtual = amostrarCaminho(pontos, fechado, subdivisoes)
+	return #pontos
+end
+
+--- Monta o cenário inteiro acompanhando a pista. Devolve o Model raiz.
+function ScenarioCasas.AoLongoDaPista(opcoes)
+	opcoes = opcoes or {}
+	local cfg = mesclar(PADRAO, opcoes)
+	-- distância lateral é bem menor que a radial do modo em leque:
+	-- a névoa tem que começar e saturar muito mais cedo
+	if opcoes.NevoaInicio == nil then cfg.NevoaInicio = 60 end
+	if opcoes.NevoaFim == nil then cfg.NevoaFim = 900 end
+
+	local origemCaminho = opcoes.Caminho or workspace:FindFirstChild("CaminhoPista")
+	local pontos = coletarPontos(origemCaminho)
+	if #pontos < 2 then
+		warn("[ScenarioCasas] A pista precisa de pelo menos 2 pontos; achei " .. #pontos ..
+			". Marque o caminho com ScenarioCasas.MarcarPonto().")
+		return nil
+	end
+	local caminho = amostrarCaminho(pontos, opcoes.Fechado, opcoes.Subdivisoes)
+	pistaAtual = caminho
+
+	local pai = cfg.Pai or workspace
+	local antigo = pai:FindFirstChild(cfg.Nome)
+	if antigo then antigo:Destroy() end
+
+	local raiz = Instance.new("Model")
+	raiz.Name = cfg.Nome
+	definirSeguro(raiz, "ModelStreamingMode", Enum.ModelStreamingMode.Persistent)
+	definirSeguro(raiz, "LevelOfDetail", Enum.ModelLevelOfDetail.Disabled)
+
+	local rng = Random.new(cfg.Semente)
+	local filtro = RaycastParams.new()
+	filtro.FilterType = Enum.RaycastFilterType.Exclude
+	-- os marcadores da pista não podem servir de chão pro raycast
+	local ignorar = { raiz }
+	if typeof(origemCaminho) == "Instance" then
+		table.insert(ignorar, origemCaminho)
+	end
+	for _, extra in ipairs(opcoes.Ignorar or {}) do
+		table.insert(ignorar, extra)
+	end
+	filtro.FilterDescendantsInstances = ignorar
+	filtro.IgnoreWater = true
+
+	local colocadas = {}
+	local totalPecas, totalTris, totalCasas, totalArvores = 0, 0, 0, 0
+
+	for _, faixaBruta in ipairs(opcoes.Faixas or FAIXAS_PADRAO) do
+		local faixa = mesclar(FAIXA_PADRAO, faixaBruta)
+		local espacamento = math.max(8, faixa.Espacamento)
+		local pasta = Instance.new("Folder")
+		pasta.Name = faixa.Nome
+
+		local lados
+		if faixa.Lados == "esquerda" then
+			lados = { -1 }
+		elseif faixa.Lados == "direita" then
+			lados = { 1 }
+		else
+			lados = { -1, 1 }
+		end
+
+		local percorrido = espacamento
+		for i = 2, #caminho do
+			percorrido = percorrido + (caminho[i].p - caminho[i - 1].p).Magnitude
+			if percorrido >= espacamento then
+				percorrido = 0
+				local amostra = caminho[i]
+				local direita = ladoDireito(amostra.t)
+
+				for _, lado in ipairs(lados) do
+					local sorteio = rng:NextNumber()
+					local ehCasa = sorteio < faixa.Densidade
+					local ehArvore = (not ehCasa) and sorteio < (faixa.Densidade + faixa.ChanceArvore)
+
+					if ehCasa or ehArvore then
+						local recuo = faixa.Recuo + rng:NextNumber(-0.5, 0.5) * faixa.VariacaoRecuo
+						-- empurra também ao longo da pista, senão vira fileira
+						local desvio = rng:NextNumber(-0.5, 0.5) * espacamento * 0.6
+						local pos = amostra.p + direita * (recuo * lado) + amostra.t * desvio
+
+						pos = pousar(pos, amostra.p.Y, faixa.Encaixar, cfg, filtro)
+						pos = pos + Vector3.new(0,
+							faixa.Altura + rng:NextNumber(-0.5, 0.5) * faixa.VariacaoAltura, 0)
+
+						local livre = true
+						for _, outra in ipairs(colocadas) do
+							if (outra - pos).Magnitude < faixa.DistanciaMinima then
+								livre = false
+							end
+						end
+
+						if livre then
+							local alvo = Vector3.new(amostra.p.X, pos.Y, amostra.p.Z)
+							local base
+							if (alvo - pos).Magnitude > 0.25 then
+								base = CFrame.lookAt(pos, alvo)
+							else
+								base = CFrame.new(pos)
+							end
+							base = base * CFrame.Angles(0,
+								math.rad(rng:NextNumber(-1, 1) * faixa.GiroAleatorio), 0)
+
+							local nevoa = nivelDeNevoa(math.abs(recuo), cfg)
+							local escala = faixa.Escala *
+								(1 + rng:NextNumber(-1, 1) * faixa.VariacaoEscala)
+							local ctx = novoContexto(cfg, faixa, base, nevoa, rng, escala)
+
+							if ehCasa then
+								local nome
+								if faixa.Tipo == "PLACA" then
+									nome = "Placa"
+								else
+									nome = escolher(rng, faixa.Arquetipos)
+								end
+								local p, tr = montarCorpo(ctx, nome, faixa, pasta)
+								totalPecas = totalPecas + p
+								totalTris = totalTris + tr
+								totalCasas = totalCasas + 1
+							else
+								construirArvore(ctx)
+								ctx.modelo.Name = "Pinheiro"
+								definirSeguro(ctx.modelo, "LevelOfDetail", Enum.ModelLevelOfDetail.Disabled)
+								ctx.modelo.Parent = pasta
+								totalPecas = totalPecas + ctx.pecas
+								totalTris = totalTris + ctx.tris
+								totalArvores = totalArvores + 1
+							end
+							table.insert(colocadas, pos)
+						end
+					end
+				end
+			end
+		end
+
+		pasta.Parent = raiz
+	end
+
+	raiz.Parent = pai
+
+	if cfg.Relatorio then
+		print(string.format(
+			"[ScenarioCasas] %s: %d construções + %d árvores ao longo de %d pontos de pista | %d partes, ~%d triângulos.",
+			cfg.Nome, totalCasas, totalArvores, #pontos, totalPecas, totalTris))
+	end
+
+	return raiz
+end
+
+----------------------------------------------------------------------
+-- 9. COLOCAR NA MÃO — pra ir montando aos poucos
+----------------------------------------------------------------------
+
+-- GetAttribute devolvendo false tem que vencer o padrão, e `or` não faz isso
+local function atributoOu(instancia, chave, padrao)
+	local valor = instancia:GetAttribute(chave)
+	if valor == nil then
+		return padrao
+	end
+	return valor
+end
+
+local function destinoAvulso(opcoes)
+	if opcoes.Pai then return opcoes.Pai end
+	local nome = opcoes.Nome or "CenarioAvulso"
+	local existente = workspace:FindFirstChild(nome)
+	if existente then return existente end
+	local modelo = Instance.new("Model")
+	modelo.Name = nome
+	definirSeguro(modelo, "ModelStreamingMode", Enum.ModelStreamingMode.Persistent)
+	modelo.Parent = workspace
+	return modelo
+end
+
+--- Uma construção em um lugar específico.
+--  @param onde Vector3 (chão da casa) ou CFrame
+--  @param opcoes campos de FAIXA_PADRAO + Arquetipo, Semente, Nevoa,
+--         VirarPara (Vector3), Virar ("pista" | "marcador")
+function ScenarioCasas.ColocarEm(onde, opcoes)
+	opcoes = opcoes or {}
+	local pos, rotacao
+	if typeof(onde) == "CFrame" then
+		pos, rotacao = onde.Position, onde.Rotation
+	else
+		pos = onde
+	end
+
+	local cfg = mesclar(PADRAO, opcoes.Config)
+	if (opcoes.Config == nil) or (opcoes.Config.NevoaInicio == nil) then
+		cfg.NevoaInicio = 60
+	end
+	if (opcoes.Config == nil) or (opcoes.Config.NevoaFim == nil) then
+		cfg.NevoaFim = 900
+	end
+
+	local faixa = mesclar(FAIXA_PADRAO, opcoes)
+	local rng = Random.new(opcoes.Semente or math.floor(os.clock() * 1e6))
+
+	local amostra, distLateral = maisProximoNaPista(pos)
+	local base
+	if opcoes.VirarPara then
+		local alvo = Vector3.new(opcoes.VirarPara.X, pos.Y, opcoes.VirarPara.Z)
+		if (alvo - pos).Magnitude > 0.25 then
+			base = CFrame.lookAt(pos, alvo)
+		end
+	end
+	if (not base) and opcoes.Virar ~= "marcador" and amostra then
+		local alvo = Vector3.new(amostra.p.X, pos.Y, amostra.p.Z)
+		if (alvo - pos).Magnitude > 0.25 then
+			base = CFrame.lookAt(pos, alvo)
+		end
+	end
+	if (not base) and rotacao then
+		base = CFrame.new(pos) * rotacao
+	end
+	if not base then
+		base = CFrame.new(pos)
+	end
+	-- na mão, o giro é seu: só desalinha se você pedir
+	local giro = opcoes.GiroAleatorio or 0
+	if giro > 0 then
+		base = base * CFrame.Angles(0, math.rad(rng:NextNumber(-1, 1) * giro), 0)
+	end
+
+	local nevoa = opcoes.Nevoa
+	if nevoa == nil then
+		if distLateral then
+			nevoa = nivelDeNevoa(distLateral, cfg)
+		else
+			nevoa = 0
+		end
+	end
+
+	local ctx = novoContexto(cfg, faixa, base, nevoa, rng, faixa.Escala)
+	local nome = opcoes.Arquetipo
+	if not nome then
+		if faixa.Tipo == "PLACA" then
+			nome = "Placa"
+		else
+			nome = escolher(rng, faixa.Arquetipos)
+		end
+	end
+	montarCorpo(ctx, nome, faixa, destinoAvulso(opcoes))
+	return ctx.modelo
+end
+
+--- Command Bar: põe uma construção onde a câmera do Studio está olhando.
+--  Voa até o ponto, roda, nasce a casa. Seta pra cima + Enter repete.
+function ScenarioCasas.Aqui(opcoes)
+	opcoes = opcoes or {}
+	local cam = workspace.CurrentCamera
+	if not cam then
+		warn("[ScenarioCasas] Sem CurrentCamera — isso é pra rodar na Command Bar do Studio.")
+		return nil
+	end
+	local filtro = RaycastParams.new()
+	filtro.FilterType = Enum.RaycastFilterType.Exclude
+	filtro.FilterDescendantsInstances = opcoes.Ignorar or {}
+	filtro.IgnoreWater = true
+
+	local alcance = opcoes.Alcance or 3000
+	local hit = workspace:Raycast(cam.CFrame.Position, cam.CFrame.LookVector * alcance, filtro)
+	local pos
+	if hit then
+		pos = hit.Position
+	else
+		pos = cam.CFrame.Position + cam.CFrame.LookVector * 120
+	end
+
+	local op = mesclar(opcoes, {})
+	if (op.VirarPara == nil) and (pistaAtual == nil) then
+		op.VirarPara = cam.CFrame.Position     -- sem pista definida, encara a câmera
+	end
+	local modelo = ScenarioCasas.ColocarEm(pos, op)
+	print(string.format("[ScenarioCasas] %s em %.0f, %.0f, %.0f",
+		modelo.Name, pos.X, pos.Y, pos.Z))
+	return modelo
+end
+
+--- Command Bar: uma construção em cima de cada Part selecionada.
+function ScenarioCasas.NaSelecao(opcoes)
+	opcoes = opcoes or {}
+	local ok, Selection = pcall(function() return game:GetService("Selection") end)
+	if (not ok) or (not Selection) then
+		warn("[ScenarioCasas] NaSelecao só roda na Command Bar do Studio.")
+		return {}
+	end
+	local feitas = {}
+	for _, item in ipairs(Selection:Get()) do
+		if item:IsA("BasePart") then
+			table.insert(feitas, ScenarioCasas.ColocarEm(item.CFrame, opcoes))
+		end
+	end
+	print(string.format("[ScenarioCasas] %d construções colocadas na seleção.", #feitas))
+	return feitas
+end
+
+--- Constrói a partir de uma pasta de marcadores que você posicionou.
+--  O jeito não-destrutivo de trabalhar: mexe no marcador, roda de novo.
+--  Atributos aceitos em cada marcador: Arquetipo, Tipo, Escala, Nevoa,
+--  Semente, Colidir, Detalhe, Virar ("pista" | "marcador").
+function ScenarioCasas.Marcadores(origem, opcoes)
+	opcoes = opcoes or {}
+	origem = origem or workspace:FindFirstChild("MarcadoresCasas")
+	if not origem then
+		warn("[ScenarioCasas] Não achei a pasta de marcadores.")
+		return nil
+	end
+
+	local pai = opcoes.Pai or workspace
+	local nome = opcoes.Nome or "CenarioMarcadores"
+	local antigo = pai:FindFirstChild(nome)
+	if antigo then antigo:Destroy() end
+
+	local raiz = Instance.new("Model")
+	raiz.Name = nome
+	definirSeguro(raiz, "ModelStreamingMode", Enum.ModelStreamingMode.Persistent)
+
+	local total = 0
+	for _, marcador in ipairs(origem:GetDescendants()) do
+		if marcador:IsA("BasePart") then
+			local semente = marcador:GetAttribute("Semente")
+			if not semente then
+				-- mesma posição = mesma casa toda vez que reconstruir
+				semente = math.floor(math.abs(marcador.Position.X) * 7
+					+ math.abs(marcador.Position.Y) * 13
+					+ math.abs(marcador.Position.Z) * 17) + #marcador.Name
+			end
+			local op = mesclar(opcoes, {
+				Pai = raiz,
+				Semente = semente,
+				Arquetipo = atributoOu(marcador, "Arquetipo", opcoes.Arquetipo),
+				Tipo = atributoOu(marcador, "Tipo", opcoes.Tipo),
+				Escala = atributoOu(marcador, "Escala", opcoes.Escala),
+				Nevoa = atributoOu(marcador, "Nevoa", opcoes.Nevoa),
+				Colidir = atributoOu(marcador, "Colidir", opcoes.Colidir),
+				Detalhe = atributoOu(marcador, "Detalhe", opcoes.Detalhe),
+				Virar = atributoOu(marcador, "Virar", opcoes.Virar),
+			})
+			ScenarioCasas.ColocarEm(marcador.CFrame, op)
+			total = total + 1
+		end
+	end
+
+	raiz.Parent = pai
+	print(string.format("[ScenarioCasas] %d marcadores construídos em %s.", total, nome))
+	return raiz
+end
+
+--- Command Bar: larga o próximo ponto da pista onde a câmera olha.
+--  Voa seguindo a trilha, Enter, Enter, Enter... e pronto: o caminho.
+function ScenarioCasas.MarcarPonto(nomePasta)
+	nomePasta = nomePasta or "CaminhoPista"
+	local pasta = workspace:FindFirstChild(nomePasta)
+	if not pasta then
+		pasta = Instance.new("Folder")
+		pasta.Name = nomePasta
+		pasta.Parent = workspace
+	end
+
+	local cam = workspace.CurrentCamera
+	if not cam then
+		warn("[ScenarioCasas] Sem CurrentCamera — isso é pra rodar na Command Bar do Studio.")
+		return nil
+	end
+
+	local filtro = RaycastParams.new()
+	filtro.FilterType = Enum.RaycastFilterType.Exclude
+	filtro.FilterDescendantsInstances = { pasta }
+	filtro.IgnoreWater = true
+	local hit = workspace:Raycast(cam.CFrame.Position, cam.CFrame.LookVector * 3000, filtro)
+	local pos
+	if hit then
+		pos = hit.Position + Vector3.new(0, 2, 0)
+	else
+		pos = cam.CFrame.Position + cam.CFrame.LookVector * 80
+	end
+
+	local quantos = 0
+	for _, filho in ipairs(pasta:GetChildren()) do
+		if filho:IsA("BasePart") then
+			quantos = quantos + 1
+		end
+	end
+
+	local ponto = Instance.new("Part")
+	ponto.Name = string.format("%03d", quantos + 1)
+	ponto.Shape = Enum.PartType.Ball
+	ponto.Size = Vector3.new(6, 6, 6)
+	ponto.Position = pos
+	ponto.Anchored = true
+	ponto.CanCollide = false
+	ponto.CanQuery = false
+	ponto.CanTouch = false
+	ponto.CastShadow = false
+	ponto.Transparency = 0.4
+	ponto.Color = Color3.fromRGB(255, 170, 40)
+	ponto.Material = Enum.Material.Neon
+	ponto.Parent = pasta
+
+	print(string.format("[ScenarioCasas] ponto %s da pista (%d no total).", ponto.Name, quantos + 1))
+	return ponto
+end
+
+ScenarioCasas.FAIXA_PADRAO = FAIXA_PADRAO
+ScenarioCasas.FAIXAS_PADRAO = FAIXAS_PADRAO
 
 ScenarioCasas.PALETA = PALETA
 ScenarioCasas.PADRAO = PADRAO
